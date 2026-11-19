@@ -10,7 +10,7 @@ from matplotlib.widgets import Slider
 
 import matplotlib.image as mpimg
 
-from viz_base import BRAND_TEXT, WINDOW_TITLE, Renderer, logo_images
+from viz_base import BRAND_TEXT, QUIT_KEYS, WINDOW_TITLE, Renderer, logo_images
 
 
 class MatplotlibRenderer(Renderer):
@@ -80,6 +80,12 @@ class MatplotlibRenderer(Renderer):
         self._place_logos()
         # figure-fraction positions depend on the window size: redo on resize
         fig.canvas.mpl_connect("resize_event", lambda event: self._place_logos())
+        # quit keys, independent of matplotlib's (configurable) default key map
+        self._quit = False
+        quit_keys = {k.lower() for k in QUIT_KEYS}
+        fig.canvas.mpl_connect("key_press_event",
+                               lambda event: setattr(self, "_quit", self._quit or
+                                                     (event.key or "").lower() in quit_keys))
         plt.show(block=False)
         fig.canvas.draw()
 
@@ -120,7 +126,7 @@ class MatplotlibRenderer(Renderer):
         self.fig.canvas.flush_events()
 
     def is_open(self):
-        return plt.fignum_exists(self.fig.number)
+        return not self._quit and plt.fignum_exists(self.fig.number)
 
     def close(self):
         plt.close(self.fig)

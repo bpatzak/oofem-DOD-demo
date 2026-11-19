@@ -20,7 +20,7 @@ try:
 except ImportError:  # older VTK layouts
     VTK_FONT_FILE = 4
 
-from viz_base import BRAND_TEXT, WINDOW_TITLE, Renderer, logo_images
+from viz_base import BRAND_TEXT, QUIT_KEYS, WINDOW_TITLE, Renderer, logo_images
 
 CELL_TYPES = {"quad": pv.CellType.QUAD, "tri": pv.CellType.TRIANGLE}
 
@@ -95,6 +95,9 @@ class PyVistaRenderer(Renderer):
                                  style="modern")
 
         self.pl = pl
+        self._quit = False
+        for key in QUIT_KEYS:
+            pl.add_key_event(key, self._request_quit)
         self._logos = [(pl.add_logo_widget(path, position=(0.0, 0.0), size=(0.1, 0.1), opacity=1.0),
                         aspect, scale)
                        for path, aspect, scale in logo_images(th)]
@@ -201,10 +204,15 @@ class PyVistaRenderer(Renderer):
         else:
             st.SetInput(text)
 
+    def _request_quit(self):
+        self._quit = True       # the main loop sees is_open() == False and closes
+
     def is_open(self):
         pl = getattr(self, "pl", None)
-        return pl is not None and not getattr(pl, "_closed", False) and pl.render_window is not None
+        return (pl is not None and not self._quit and not getattr(pl, "_closed", False)
+                and pl.render_window is not None)
 
     def close(self):
-        if self.is_open():
-            self.pl.close()
+        pl = getattr(self, "pl", None)
+        if pl is not None and not getattr(pl, "_closed", False):
+            pl.close()

@@ -17,6 +17,9 @@ LOGOS = [
     {"light": "oofem_logo.png"},   # OOFEM (filled wordmark, readable on light and dark)
 ]
 
+# Keys that close the visualization window and end the main loop
+QUIT_KEYS = ("q", "Escape")
+
 BRAND_TEXT = "(C) Katedra mechaniky, Fakulta stavební ČVUT"
 WINDOW_TITLE = "OOFEM real-time demo · oofem.org"
 
