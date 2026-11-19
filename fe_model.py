@@ -34,8 +34,7 @@ class FEModel:
         self.timing["setup"] = time.perf_counter() - t0
         self._unit = None
         if mode == "scale":
-            self._unit = {c: self._solve_oofem({k: (1.0 if k == c else 0.0) for k in spec.controls})
-                          for c in spec.controls}
+            self.unit_results()
 
     # ------------------------------------------------------------------ build
     def _build(self):
@@ -104,6 +103,17 @@ class FEModel:
         # its references alive as well.
         self._keep = (ltf, bcs, nodes, mat, cs, elems, eset)
         self._geom = None   # (coords, cells) in export ordering, filled lazily
+
+    def unit_results(self):
+        """Solution for each control channel at unit value (others zero).
+
+        Used for fixed colour limits: by linearity, results for the maximum
+        expected input are the unit results scaled by that maximum.
+        """
+        if self._unit is None:
+            self._unit = {c: self._solve_oofem({k: (1.0 if k == c else 0.0) for k in self.spec.controls})
+                          for c in self.spec.controls}
+        return self._unit
 
     # ------------------------------------------------------------------ solve
     def solve(self, values):
