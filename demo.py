@@ -145,14 +145,21 @@ def run(args):
                       lambda v: [source.set(c, v) for c in channels])
         unit = next(iter(model.unit_results().values()))
         umax = np.abs(unit.disp).max() * args.max * args.warp
+        info = (f"{spec.n_nodes} nodes · {spec.n_cells} elements · {model.n_equations} DOFs · "
+                f"h = {args.h:g} mm · setup {1e3 * model.timing['setup']:.0f} ms")
         renderer.setup(Scene(coords=unit.coords, cells=unit.cells, cell_type=spec.cell_type,
                              field_label=f"{field.label} [{field.unit}]", clim=clim,
-                             signed=field.symmetric, title=spec.title, groups=spec.groups,
+                             signed=field.symmetric, title=f"{spec.title}\n{info}", groups=spec.groups,
                              warp_margin=umax, theme=THEMES[args.theme], smooth=smooth,
                              slider=slider))
 
     stats = Stats()
-    frame, t_frame = 0, 0.0
+    frame = 0
+    # running averages shown on screen (exponential smoothing avoids flicker)
+    ema = {"solve": 0.0, "draw": 0.0, "frame": 0.0}
+
+    def ema_update(key, value, alpha=0.1):
+        ema[key] = value if ema[key] == 0.0 else (1 - alpha) * ema[key] + alpha * value
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
         inputs = source.read()
@@ -163,11 +170,16 @@ def run(args):
         t3 = time.perf_counter()
         if renderer is not None:
             vin = ", ".join(f"{k} = {v:6.3f} mm" for k, v in inputs.items())
-            status = (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}"
-                      f"   frame {1e3 * t_frame:5.1f} ms")
+            fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
+            status = (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
+                      f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
+                      f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
             renderer.update(res.coords + args.warp * res.disp, cvals, nvals, status)
         t4 = time.perf_counter()
         t_frame = t4 - t0
+        ema_update("solve", model.timing["solve"] + model.timing["extract"])
+        ema_update("draw", t4 - t3)
+        ema_update("frame", t_frame)
         stats.add(input=t1 - t0, solve=model.timing["solve"], extract=model.timing["extract"],
                   post=t3 - t2, draw=t4 - t3, frame=t_frame)
         frame += 1
