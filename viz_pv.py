@@ -94,13 +94,43 @@ class PyVistaRenderer(Renderer):
                                  pointa=(0.30, 0.90), pointb=(0.70, 0.90), color=th.foreground,
                                  style="modern")
 
-        self._add_logos(pl, th)
-        self._fit_camera(pl, sc)
-        pl.show(interactive_update=True, auto_close=False)
         self.pl = pl
+        self._logos = [(pl.add_logo_widget(path, position=(0.0, 0.0), size=(0.1, 0.1), opacity=1.0),
+                        aspect, scale)
+                       for path, aspect, scale in logo_images(th)]
+        for widget, _, _ in self._logos:
+            # static decoration: no hover border, cannot be dragged or resized
+            widget.GetRepresentation().SetShowBorderToOff()
+            widget.ProcessEventsOff()
+        self._size = None
+        self._layout()
+        pl.show(interactive_update=True, auto_close=False)
+        self._layout()              # the window may open with a different size
+
+    def _layout(self):
+        """Place logos and fit the camera for the current window size.
+
+        Viewport-normalized positions depend on the window aspect ratio, so this
+        is redone whenever the window is resized (checked in update()).
+        """
+        size = tuple(self.pl.window_size)
+        if size == self._size or min(size) <= 0:
+            return
+        self._size = size
+        logo_bottom = self._place_logos(size)
+        self._place_scalar_bar(size, top_px=logo_bottom - 10)
+        self._fit_camera(self.pl, self.sc, size)
+
+    def _place_scalar_bar(self, size, top_px, bottom_px=70):
+        """Fit the vertical colour bar between the logos and the status text."""
+        ww, wh = size
+        top_px = min(top_px, wh - 10)
+        for bar in self.pl.scalar_bars.values():
+            bar.SetPosition(0.90, bottom_px / wh)
+            bar.SetHeight(max(top_px - bottom_px, 40) / wh)
 
     @staticmethod
-    def _fit_camera(pl, sc, pad=0.06):
+    def _fit_camera(pl, sc, size, pad=0.06):
         """Parallel projection fitted to the model plus room for deformation/markers.
 
         reset_camera() fits the bounding sphere, which leaves a slender beam
@@ -111,7 +141,7 @@ class PyVistaRenderer(Renderer):
         ymin -= sc.warp_margin + mark
         ymax += mark
         w, h = (xmax - xmin) * (1 + 2 * pad), (ymax - ymin) * (1 + 2 * pad)
-        ww, wh = pl.window_size
+        ww, wh = size
         aspect = ww / wh
         fx0, fx1 = MODEL_VIEW_X
         ps = max(0.5 * h / 0.8, 0.5 * w / (aspect * (fx1 - fx0)))   # half view height
@@ -122,17 +152,29 @@ class PyVistaRenderer(Renderer):
         pl.camera.parallel_projection = True
         pl.camera.parallel_scale = ps
 
-    @staticmethod
-    def _add_logos(pl, th, height=0.07, right=0.99, top=0.985, gap=0.01):
-        """Place logos right-aligned in the top-right corner (viewport coordinates)."""
-        ww, wh = pl.window_size
-        x = right
-        for path, aspect, scale in reversed(logo_images(th)):
-            lh = height * scale
-            w = lh * aspect * wh / ww
+    def _place_logos(self, size, height_px=40, right_px=12, top_px=8, gap_px=14, max_width=0.38):
+        """Right-align logos in the top-right corner with fixed pixel sizes.
+
+        Sizes are given in pixels and converted to the viewport-normalized
+        coordinates VTK expects, so the logos keep their size, aspect ratio and
+        corner position when the window is resized. In narrow windows they are
+        shrunk to at most max_width of the window width, leaving room for the
+        title. Returns the y pixel coordinate of the bottom of the logo row.
+        """
+        ww, wh = size
+        total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
+        f = min(1.0, max_width * ww / total) if total > 0 else 1.0
+        x, bottom = ww - right_px, wh
+        for widget, aspect, scale in reversed(self._logos):
+            h = height_px * scale * f
+            w = h * aspect
             x -= w
-            pl.add_logo_widget(path, position=(x, top - lh), size=(w, lh), opacity=1.0)
-            x -= gap
+            rep = widget.GetRepresentation()
+            rep.SetPosition(x / ww, (wh - top_px - h) / wh)
+            rep.SetPosition2(w / ww, h / wh)
+            bottom = min(bottom, wh - top_px - h)
+            x -= gap_px * f
+        return bottom
 
     def update(self, def_coords, cell_values, node_values, status):
         self.grid.points[:, :2] = def_coords
@@ -146,6 +188,7 @@ class PyVistaRenderer(Renderer):
             self.load_pts.Modified()
             self.load_glyph.copy_from(self.load_pts.glyph(geom=self.load_geom, scale=False, orient=False))
         self._set_status(status)
+        self._layout()                  # no-op unless the window was resized
         # One explicit render, then handle window events. Plotter.update()
         # installs a repeating timer that causes extra renders per frame.
         self.pl.render()
