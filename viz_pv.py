@@ -3,6 +3,14 @@
 Supports constant per-cell colouring and smooth nodal colouring (optionally
 banded, giving a contour-plot look).
 """
+import os
+
+# Under WSL, Mesa defaults to the llvmpipe software rasterizer; the d3d12
+# driver renders on the Windows GPU (about 2x faster here). Must be set before
+# the OpenGL context is created; an explicit user setting is kept.
+if os.path.isdir("/usr/lib/wsl/lib"):
+    os.environ.setdefault("GALLIUM_DRIVER", "d3d12")
+
 import numpy as np
 import pyvista as pv
 from matplotlib import font_manager
