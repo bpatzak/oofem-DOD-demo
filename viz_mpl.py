@@ -33,8 +33,7 @@ class MatplotlibRenderer(Renderer):
         ax.fill(*self._outline(xy), facecolor="none", edgecolor=th.outline, lw=0.8, ls="--")
         self.coll = PolyCollection(xy[sc.cells], array=np.zeros(len(sc.cells)),
                                    cmap=th.cmap_signed if sc.signed else th.cmap_positive,
-                                   edgecolors=th.edges if sc.show_edges else "face",
-                                   linewidths=0.3 if sc.show_edges else 0.0)
+                                   edgecolors=th.edges, linewidths=0.3)
         self.coll.set_clim(*sc.clim)
         ax.add_collection(self.coll)
 

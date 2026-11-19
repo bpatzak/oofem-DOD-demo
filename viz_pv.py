@@ -49,7 +49,7 @@ class PyVistaRenderer(Renderer):
         pl.add_mesh(grid.outline(), color=th.outline, line_width=1)
         pl.add_mesh(grid, scalars="val", preference="point" if sc.smooth else "cell",
                     cmap=th.cmap_signed if sc.signed else th.cmap_positive,
-                    clim=sc.clim, show_edges=sc.show_edges, edge_color=th.edges,
+                    clim=sc.clim, show_edges=True, edge_color=th.edges,
                     line_width=0.5, interpolate_before_map=True, n_colors=self.n_bands or 256,
                     scalar_bar_args=dict(title=sc.field_label, color=th.foreground,
                                          vertical=True, position_x=0.90, position_y=0.15,
