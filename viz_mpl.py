@@ -80,10 +80,11 @@ class MatplotlibRenderer(Renderer):
         """Place logos right-aligned in the top-right corner (figure coordinates)."""
         fw, fh = fig.get_size_inches()
         x = right
-        for path, aspect in reversed(logo_images(th)):
-            w = height * aspect * fh / fw
+        for path, aspect, scale in reversed(logo_images(th)):
+            lh = height * scale
+            w = lh * aspect * fh / fw
             x -= w
-            lax = fig.add_axes([x, top - height, w, height])
+            lax = fig.add_axes([x, top - lh, w, lh])
             lax.imshow(mpimg.imread(path))
             lax.axis("off")
             x -= gap

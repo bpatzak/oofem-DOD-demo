@@ -127,10 +127,11 @@ class PyVistaRenderer(Renderer):
         """Place logos right-aligned in the top-right corner (viewport coordinates)."""
         ww, wh = pl.window_size
         x = right
-        for path, aspect in reversed(logo_images(th)):
-            w = height * aspect * wh / ww
+        for path, aspect, scale in reversed(logo_images(th)):
+            lh = height * scale
+            w = lh * aspect * wh / ww
             x -= w
-            pl.add_logo_widget(path, position=(x, top - height), size=(w, height), opacity=1.0)
+            pl.add_logo_widget(path, position=(x, top - lh), size=(w, lh), opacity=1.0)
             x -= gap
 
     def update(self, def_coords, cell_values, node_values, status):

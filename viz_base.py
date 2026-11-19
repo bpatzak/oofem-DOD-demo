@@ -8,12 +8,13 @@ from dataclasses import dataclass
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-# Logos shown in the top-right corner, left to right. Each entry maps a theme
-# name to an image file in ASSETS; "light" is the fallback for other themes.
-# Missing files are skipped, so a logo can be added just by dropping it in.
+# Logos shown in the top-right corner, left to right, top-aligned. Each entry
+# maps a theme name to an image file in ASSETS ("light" is the fallback for
+# other themes); "scale" multiplies the base logo height, so a compact logo
+# can be made larger than a wide wordmark. Missing files are skipped.
 LOGOS = [
-    {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png"},       # Faculty of Civil Engineering, CTU
-    {"light": "oofem_logo.png", "dark": "oofem_logo_dark.png"},   # OOFEM
+    {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png", "scale": 1.9},  # Faculty of Civil Engineering, CTU
+    {"light": "oofem_logo.png", "dark": "oofem_logo_dark.png"},            # OOFEM
 ]
 
 BRAND_TEXT = "Powered by OOFEM · oofem.org"
@@ -44,7 +45,7 @@ THEMES = {
 
 
 def logo_images(theme):
-    """Return [(path, aspect=width/height)] of available logos for the theme."""
+    """Return [(path, aspect=width/height, scale)] of available logos for the theme."""
     import matplotlib.image as mpimg
     out = []
     for entry in LOGOS:
@@ -52,7 +53,7 @@ def logo_images(theme):
             path = os.path.join(ASSETS, name) if name else None
             if path and os.path.isfile(path):
                 h, w = mpimg.imread(path).shape[:2]
-                out.append((path, w / h))
+                out.append((path, w / h, entry.get("scale", 1.0)))
                 break
     return out
 
