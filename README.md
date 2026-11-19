@@ -61,7 +61,7 @@ the latest `{channel: value}`.
 Logos are shown in the top-right corner when their files exist in `assets/`.
 The list is `LOGOS` in `viz_base.py`; each entry can have a separate dark-theme
 variant:
-- `oofem_logo.png`, `oofem_logo_dark.png`: from the OOFEM documentation
+- `oofem_logo.png`: the OOFEM wordmark, used for both themes
 - `fsv_logo.png`, `fsv_logo_dark.png`: Faculty of Civil Engineering, CTU in
   Prague, made transparent from the official logo. The dark variant has white
   lettering. Both have a small transparent margin, which avoids edge artefacts

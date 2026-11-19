@@ -14,7 +14,7 @@ ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 # can be made larger than a wide wordmark. Missing files are skipped.
 LOGOS = [
     {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png", "scale": 1.9},  # Faculty of Civil Engineering, CTU
-    {"light": "oofem_logo.png", "dark": "oofem_logo_dark.png"},            # OOFEM
+    {"light": "oofem_logo.png"},   # OOFEM (filled wordmark, readable on light and dark)
 ]
 
 BRAND_TEXT = "(C) Katedra mechaniky, Fakulta stavební ČVUT"
