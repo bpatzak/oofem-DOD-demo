@@ -136,7 +136,10 @@ class PyVistaRenderer(Renderer):
             self.load_pts.Modified()
             self.load_glyph.copy_from(self.load_pts.glyph(geom=self.load_geom, scale=False, orient=False))
         self._set_status(status)
-        self.pl.update(stime=1, force_redraw=True)
+        # One explicit render, then handle window events. Plotter.update()
+        # installs a repeating timer that causes extra renders per frame.
+        self.pl.render()
+        self.pl.iren.process_events()
 
     def _set_status(self, text):
         st = self.status
