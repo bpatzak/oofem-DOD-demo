@@ -63,4 +63,9 @@ The list is `LOGOS` in `viz_base.py`; each entry can have a separate dark-theme
 variant:
 - `oofem_logo.png`, `oofem_logo_dark.png`: from the OOFEM documentation
 - `fsv_logo.png`, `fsv_logo_dark.png`: Faculty of Civil Engineering, CTU in
-  Prague. Add the official files; a PNG with a transparent background is best.
+  Prague, made transparent from the official logo. The dark variant has white
+  lettering. Both have a small transparent margin, which avoids edge artefacts
+  in VTK.
+
+The size of each logo can be adjusted with the `scale` key in `LOGOS`. The
+caption at the bottom right is `BRAND_TEXT` in `viz_base.py`.
