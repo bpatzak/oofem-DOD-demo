@@ -5,10 +5,18 @@ once; each call to :meth:`FEModel.solve` only updates the prescribed values of
 the control boundary conditions and runs one LinearStatic step. LinearStatic
 assembles and factorizes the stiffness matrix in its first step only, so later
 steps cost one right-hand-side assembly plus a back-substitution.
+
+Nodes are passed to OOFEM in reverse Cuthill-McKee order. OOFEM numbers the
+equations in node order and the default skyline solver's cost grows with the
+profile, so this keeps factorization and back-substitution cheap for any
+geometry (e.g. a slender beam numbered along its length has a huge profile).
+Results are mapped back to the ProblemSpec node order.
 """
 import time
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import reverse_cuthill_mckee
 
 from oofem_env import import_oofem
 from spec import DOFS, Result
@@ -16,17 +24,35 @@ from spec import DOFS, Result
 ELEMENT_FACTORY = {"quad": "planestress2d", "tri": "trplanestress2d"}
 
 
+def profile_reducing_order(n_nodes, cells):
+    """Node permutation (reverse Cuthill-McKee) reducing the matrix profile."""
+    nen = cells.shape[1]
+    rows = np.repeat(cells, nen, axis=1).ravel()
+    cols = np.tile(cells, (1, nen)).ravel()
+    adj = coo_matrix((np.ones(rows.size), (rows, cols)), shape=(n_nodes, n_nodes)).tocsr()
+    return np.asarray(reverse_cuthill_mckee(adj, symmetric_mode=True))
+
+
 class FEModel:
-    def __init__(self, spec, mode="solve", oofem_build=None):
+    def __init__(self, spec, mode="solve", nodal=False, reorder=True, oofem_build=None):
         """
         mode: "solve" -- run an OOFEM solve for every new input,
               "scale" -- precompute unit solutions per control channel and
                          superpose them (exact for the linear problem).
+        nodal: also export smoothed nodal stress/strain (needed for contour
+               plots only; costs an extra recovery each step).
+        reorder: number nodes in reverse Cuthill-McKee order.
         """
         if mode not in ("solve", "scale"):
             raise ValueError(f"unknown mode {mode}")
         self.spec = spec
         self.mode = mode
+        self.nodal = nodal
+        # order[k] = spec node passed to OOFEM as node k+1; pos = inverse permutation
+        self.order = (profile_reducing_order(spec.n_nodes, spec.cells) if reorder
+                      else np.arange(spec.n_nodes))
+        self.pos = np.empty_like(self.order)
+        self.pos[self.order] = np.arange(spec.n_nodes)
         self.oofempy, self.util = import_oofem(oofem_build)
         self.timing = {}      # timings of the last solve [s]
         t0 = time.perf_counter()
@@ -72,26 +98,27 @@ class FEModel:
                     self._control_bcs.setdefault(ch, []).append((bc, sign))
                 assign(np.atleast_1d(ids), dof, by_sign[sign].number)
 
-        nodes = [oofempy.node(i + 1, domain, coords=(float(x), float(y), 0.0),
+        nodes = [oofempy.node(k + 1, domain, coords=(float(spec.coords[i, 0]), float(spec.coords[i, 1]), 0.0),
                               bc=tuple(int(b) for b in dof_bc[i]))
-                 for i, (x, y) in enumerate(spec.coords)]
+                 for k, i in enumerate(self.order)]
 
         mat = oofempy.isoLE(1, domain, d=1.0, E=spec.material["E"], n=spec.material["nu"], tAlpha=0.0)
         cs = oofempy.simpleCS(1, domain, thick=spec.thickness, material=1, set=1)
 
         make_elem = getattr(oofempy, ELEMENT_FACTORY[spec.cell_type])
         elems = [make_elem(i + 1, domain, nodes=tuple(int(n) + 1 for n in c))
-                 for i, c in enumerate(spec.cells)]
+                 for i, c in enumerate(self.pos[spec.cells])]
         eset = oofempy.createSet(1, domain, elements=tuple(range(1, spec.n_cells + 1)))
 
         util.setupDomain(domain, nodes, elems, (cs,), (mat,), bcs, (), (ltf,), (eset,))
 
         # In-memory VTK export: displacement (primvar 1), stress/strain (IST 1, 4)
-        # as element averages (cellvars) and smoothed nodal values (vars).
+        # as element averages (cellvars) and optionally smoothed nodal values (vars).
+        nodal_vars = {"vars": (1, 4), "stype": 1} if self.nodal else {}
         self._export = oofempy.vtkmemory(1, problem, domain_all=True, tstep_all=True,
                                          dofman_all=True, element_all=True,
-                                         vars=(1, 4), primvars=(1,), cellvars=(1, 4),
-                                         stype=1, pythonExport=1)
+                                         primvars=(1,), cellvars=(1, 4),
+                                         pythonExport=1, **nodal_vars)
 
         problem.checkProblemConsistency()
         problem.init()
@@ -102,7 +129,7 @@ class FEModel:
         # The domain takes ownership of these objects, but Python must keep
         # its references alive as well.
         self._keep = (ltf, bcs, nodes, mat, cs, elems, eset)
-        self._geom = None   # (coords, cells) in export ordering, filled lazily
+        self._checked = False   # export ordering verified against spec
 
     def unit_results(self):
         """Solution for each control channel at unit value (others zero).
@@ -148,24 +175,31 @@ class FEModel:
         return res
 
     def _extract(self, values):
+        """Read export arrays and map vertex data back to the spec node order.
+
+        Export vertex k corresponds to OOFEM node k+1, i.e. spec node order[k];
+        this is verified on the first call. Cells keep the spec ordering.
+        """
         ist = self.oofempy.InternalStateType
+        spec, pos = self.spec, self.pos
         reg = self._export.getExportRegions()[0]
-        if self._geom is None:
-            coords = np.array(reg.getVertices())[:, :2].copy()
-            # NOTE: reg.getCellConnectivity() is not used: its pybind11 wrapper
-            # (intarray2numpy in oofem.cpp) returns a view of a freed temporary
-            # and yields garbage. Read the connectivity per cell instead; this
-            # is done once only.
-            cells = np.array([[int(n) - 1 for n in reg.giveCellConnectivity(i + 1)]
-                              for i in range(self.spec.n_cells)], dtype=int)
-            self._geom = (coords, cells)
-        coords, cells = self._geom
-        disp = np.array(reg.getPrimaryVertexValues(self.oofempy.UnknownType.DisplacementVector))[:, :2]
-        return Result(coords=coords, cells=cells, disp=disp,
+        if not self._checked:
+            # NOTE: reg.getCellConnectivity() is avoided: its pybind11 wrapper
+            # (intarray2numpy in oofem.cpp) returns a view of a freed temporary.
+            coords = np.array(reg.getVertices())[:, :2][pos]
+            if coords.shape != spec.coords.shape or not np.allclose(coords, spec.coords):
+                raise RuntimeError("OOFEM export vertex ordering differs from node numbering")
+            self._checked = True
+        disp = np.array(reg.getPrimaryVertexValues(self.oofempy.UnknownType.DisplacementVector))[pos, :2]
+        if self.nodal:
+            node_stress = np.array(reg.getInternalVertexValues(ist.IST_StressTensor))[pos]
+            node_strain = np.array(reg.getInternalVertexValues(ist.IST_StrainTensor))[pos]
+        else:
+            node_stress = node_strain = np.zeros((spec.n_nodes, 9))
+        return Result(coords=spec.coords, cells=spec.cells, disp=disp,
                       cell_stress=np.array(reg.getCellValues(ist.IST_StressTensor)),
                       cell_strain=np.array(reg.getCellValues(ist.IST_StrainTensor)),
-                      node_stress=np.array(reg.getInternalVertexValues(ist.IST_StressTensor)),
-                      node_strain=np.array(reg.getInternalVertexValues(ist.IST_StrainTensor)),
+                      node_stress=node_stress, node_strain=node_strain,
                       inputs=dict(values))
 
     @property
