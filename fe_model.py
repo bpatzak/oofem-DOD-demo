@@ -11,6 +11,9 @@ enabled by default: it renumbers the equations, not the nodes, and keeps the
 skyline profile small for any geometry (a slender beam numbered along its
 length otherwise has a large profile).
 """
+import contextlib
+import os
+import sys
 import time
 
 import numpy as np
@@ -20,6 +23,26 @@ from spec import DOFS, Result
 
 ELEMENT_FACTORY = {"quad": "planestress2d", "tri": "trplanestress2d"}
 
+
+@contextlib.contextmanager
+def stderr_to_devnull():
+    """Silence C/C++-level stderr (file descriptor 2) within the block.
+
+    Workaround: floatmatrix2numpy() in OOFEM's pybind11 bindings (oofem.cpp)
+    contains a leftover debug ``std::cerr << std::endl``, printing an empty
+    line for every matrix returned to Python. Only the result-reading calls
+    are wrapped, so errors from the solver itself remain visible.
+    """
+    sys.stderr.flush()
+    saved = os.dup(2)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, 2)
+        yield
+    finally:
+        os.dup2(saved, 2)
+        os.close(devnull)
+        os.close(saved)
 
 
 class FEModel:
@@ -160,7 +183,8 @@ class FEModel:
         problem.updateYourself(ts)      # recomputes stresses at Gauss points
         problem.terminate(ts)           # runs export modules (vtkmemory)
         t1 = time.perf_counter()
-        res = self._extract(values)
+        with stderr_to_devnull():
+            res = self._extract(values)
         self.timing.update(solve=t1 - t0, extract=time.perf_counter() - t1)
         return res
 
