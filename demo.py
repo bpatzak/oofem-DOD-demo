@@ -47,6 +47,8 @@ def parse_args(argv=None):
     ap.add_argument("--bench", type=int, default=0, metavar="N",
                     help="benchmark N solves for each mesh size in --bench-h and exit")
     ap.add_argument("--bench-h", default="5,2,1,0.5", help="mesh sizes for --bench")
+    ap.add_argument("--no-profileopt", action="store_true",
+                    help="disable OOFEM equation renumbering (profile optimization)")
     ap.add_argument("--oofem-build", help="directory with oofempy*.so (default: $OOFEM_BUILD)")
     ap.add_argument("--list", action="store_true", help="list geometries and fields and exit")
     args = ap.parse_args(argv)
@@ -97,7 +99,8 @@ def benchmark(args):
           f"{'solve':>8} {'p95':>8} {'extract':>8} {'total':>8}   [ms]")
     for h in (float(x) for x in args.bench_h.split(",")):
         spec = geom.build(h, **params)
-        m = FEModel(spec, mode="solve", nodal=args.smooth, oofem_build=args.oofem_build)
+        m = FEModel(spec, mode="solve", nodal=args.smooth, profileopt=not args.no_profileopt,
+                    oofem_build=args.oofem_build)
         t0 = time.perf_counter()
         m.solve({c: 1.0 for c in spec.controls})          # assembles + factorizes K
         first = time.perf_counter() - t0
@@ -116,7 +119,8 @@ def run(args):
     from fe_model import FEModel
     spec = GEOMETRIES[args.geometry]().build(args.h, **geometry_params(args))
     smooth = args.smooth and args.backend == "pv"
-    model = FEModel(spec, mode=args.mode, nodal=smooth, oofem_build=args.oofem_build)
+    model = FEModel(spec, mode=args.mode, nodal=smooth, profileopt=not args.no_profileopt,
+                    oofem_build=args.oofem_build)
     channels = list(spec.controls)
     print(f"{spec.title}: {spec.n_nodes} nodes, {spec.n_cells} elements, "
           f"{model.n_equations} equations, setup {1e3 * model.timing['setup']:.0f} ms")
