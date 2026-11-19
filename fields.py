@@ -54,17 +54,18 @@ FIELDS = {
 }
 
 
-def color_limits(field, unit_results, max_inputs):
+def color_limits(field, unit_results, max_inputs, smooth=False):
     """Fixed colour range for the expected input range (no flicker).
 
     For a linear model the extreme value of a signed field over the input range
     [-max, max] of each channel is bounded by sum(|unit field| * max). For a
-    single channel the bound is exact.
+    single channel the bound is exact. Only the values actually displayed
+    (cell or smoothed nodal) are considered.
     """
     bound = None
     for ch, res in unit_results.items():
         c, n = field.evaluate(res)
-        m = max(np.abs(c).max(), np.abs(n).max()) * abs(max_inputs.get(ch, 1.0))
+        m = np.abs(n if smooth else c).max() * abs(max_inputs.get(ch, 1.0))
         bound = m if bound is None else bound + m
     bound = bound or 1.0
     return (-bound, bound) if field.symmetric else (0.0, bound)

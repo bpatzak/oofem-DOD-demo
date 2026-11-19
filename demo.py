@@ -123,7 +123,8 @@ def run(args):
 
     field = FIELDS[args.field]
     max_inputs = {c: args.max for c in channels}
-    clim = color_limits(field, model.unit_results(), max_inputs)   # also factorizes K
+    clim = color_limits(field, model.unit_results(), max_inputs,   # also factorizes K
+                        smooth=args.smooth and args.backend == "pv")
     print(f"field {field.label}: fixed colour range {clim[0]:.4g} .. {clim[1]:.4g} {field.unit} "
           f"for input up to {args.max:g}")
 
