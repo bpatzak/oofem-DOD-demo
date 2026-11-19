@@ -97,7 +97,7 @@ def benchmark(args):
           f"{'solve':>8} {'p95':>8} {'extract':>8} {'total':>8}   [ms]")
     for h in (float(x) for x in args.bench_h.split(",")):
         spec = geom.build(h, **params)
-        m = FEModel(spec, mode="solve", oofem_build=args.oofem_build)
+        m = FEModel(spec, mode="solve", nodal=args.smooth, oofem_build=args.oofem_build)
         t0 = time.perf_counter()
         m.solve({c: 1.0 for c in spec.controls})          # assembles + factorizes K
         first = time.perf_counter() - t0
@@ -115,7 +115,8 @@ def benchmark(args):
 def run(args):
     from fe_model import FEModel
     spec = GEOMETRIES[args.geometry]().build(args.h, **geometry_params(args))
-    model = FEModel(spec, mode=args.mode, oofem_build=args.oofem_build)
+    smooth = args.smooth and args.backend == "pv"
+    model = FEModel(spec, mode=args.mode, nodal=smooth, oofem_build=args.oofem_build)
     channels = list(spec.controls)
     print(f"{spec.title}: {spec.n_nodes} nodes, {spec.n_cells} elements, "
           f"{model.n_equations} equations, setup {1e3 * model.timing['setup']:.0f} ms")
@@ -123,7 +124,7 @@ def run(args):
     field = FIELDS[args.field]
     max_inputs = {c: args.max for c in channels}
     clim = color_limits(field, model.unit_results(), max_inputs,   # also factorizes K
-                        smooth=args.smooth and args.backend == "pv")
+                        smooth=smooth)
     print(f"field {field.label}: fixed colour range {clim[0]:.4g} .. {clim[1]:.4g} {field.unit} "
           f"for input up to {args.max:g}")
 
@@ -147,7 +148,7 @@ def run(args):
         renderer.setup(Scene(coords=unit.coords, cells=unit.cells, cell_type=spec.cell_type,
                              field_label=f"{field.label} [{field.unit}]", clim=clim,
                              signed=field.symmetric, title=spec.title, groups=spec.groups,
-                             warp_margin=umax, theme=THEMES[args.theme], smooth=args.smooth,
+                             warp_margin=umax, theme=THEMES[args.theme], smooth=smooth,
                              slider=slider))
 
     stats = Stats()
