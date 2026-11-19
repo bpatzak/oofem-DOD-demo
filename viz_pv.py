@@ -59,6 +59,7 @@ class PyVistaRenderer(Renderer):
                     cmap=th.cmap_signed if sc.signed else th.cmap_positive,
                     clim=sc.clim, show_edges=True, edge_color=th.edges,
                     line_width=0.5, interpolate_before_map=True, n_colors=self.n_bands or 256,
+                    lighting=False,          # flat 2D view: show true colour-map colours
                     scalar_bar_args=dict(title=sc.field_label, color=th.foreground,
                                          vertical=True, position_x=0.90, position_y=0.15,
                                          height=0.7, width=0.04, fmt="%.3g"),
