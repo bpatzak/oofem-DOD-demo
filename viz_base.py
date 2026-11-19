@@ -17,7 +17,7 @@ LOGOS = [
     {"light": "oofem_logo.png", "dark": "oofem_logo_dark.png"},            # OOFEM
 ]
 
-BRAND_TEXT = "(c) Fakulta stavební, Katedra mechaniky"
+BRAND_TEXT = "(C) Katedra mechaniky, Fakulta stavební ČVUT"
 WINDOW_TITLE = "OOFEM real-time demo · oofem.org"
 
 
