@@ -18,8 +18,17 @@ DEFAULT_SRC = "/home/bp/devel/bpatzak-oofem.git"
 DEFAULT_BUILD = os.path.join(DEFAULT_SRC, "releaseBuild")
 
 
-def import_oofem(build_dir=None):
-    """Prepend the OOFEM build and bindings dirs to sys.path; return (oofempy, util)."""
+# OOFEM logger levels: 0 errors, 1 warnings, 2 relevant, 3 info, 4 debug
+DEFAULT_LOG_LEVEL = 1
+
+
+def import_oofem(build_dir=None, log_level=None):
+    """Prepend the OOFEM build and bindings dirs to sys.path; return (oofempy, util).
+
+    log_level sets OOFEM's (global) logger level. Messages below it are not
+    printed at all, which keeps the terminal quiet and saves the console I/O in
+    every solver step. Warnings and errors are still shown at the default level.
+    """
     build_dir = build_dir or os.environ.get("OOFEM_BUILD", DEFAULT_BUILD)
     src_dir = os.environ.get("OOFEM_SRC", DEFAULT_SRC)
     for p in (os.path.join(src_dir, "bindings", "python"), build_dir):
@@ -27,4 +36,5 @@ def import_oofem(build_dir=None):
             sys.path.insert(0, p)
     import oofempy  # noqa: E402
     import util  # noqa: E402  (oofem bindings/python/util.py)
+    oofempy.init(logLevel=DEFAULT_LOG_LEVEL if log_level is None else int(log_level))
     return oofempy, util

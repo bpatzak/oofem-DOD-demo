@@ -21,8 +21,10 @@ from spec import DOFS, Result
 ELEMENT_FACTORY = {"quad": "planestress2d", "tri": "trplanestress2d"}
 
 
+
 class FEModel:
-    def __init__(self, spec, mode="solve", nodal=False, profileopt=True, oofem_build=None):
+    def __init__(self, spec, mode="solve", nodal=False, profileopt=True, oofem_build=None,
+                 log_level=None):
         """
         mode: "solve" -- run an OOFEM solve for every new input,
               "scale" -- precompute unit solutions per control channel and
@@ -30,6 +32,7 @@ class FEModel:
         nodal: also export smoothed nodal stress/strain (needed for contour
                plots only; costs an extra recovery each step).
         profileopt: let OOFEM renumber equations to reduce the matrix profile.
+        log_level: OOFEM logger level (default: warnings and errors only).
         """
         if mode not in ("solve", "scale"):
             raise ValueError(f"unknown mode {mode}")
@@ -37,7 +40,7 @@ class FEModel:
         self.mode = mode
         self.nodal = nodal
         self.profileopt = profileopt
-        self.oofempy, self.util = import_oofem(oofem_build)
+        self.oofempy, self.util = import_oofem(oofem_build, log_level)
         self.timing = {}      # timings of the last solve [s]
         t0 = time.perf_counter()
         self._build()
