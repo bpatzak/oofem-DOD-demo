@@ -5,10 +5,28 @@ banded, giving a contour-plot look).
 """
 import numpy as np
 import pyvista as pv
+from matplotlib import font_manager
+
+try:
+    from vtkmodules.vtkRenderingCore import VTK_FONT_FILE
+except ImportError:  # older VTK layouts
+    VTK_FONT_FILE = 4
 
 from viz_base import BRAND_TEXT, WINDOW_TITLE, Renderer, logo_images
 
 CELL_TYPES = {"quad": pv.CellType.QUAD, "tri": pv.CellType.TRIANGLE}
+
+# VTK's built-in fonts lack Greek letters (σ, ε, γ); use a TrueType font that
+# has them. DejaVu Sans ships with matplotlib, so it is always available.
+FONT_FILE = font_manager.findfont("DejaVu Sans")
+
+# Fraction of the window width usable by the model (scalar bar sits to the right)
+MODEL_VIEW_X = (0.02, 0.86)
+
+
+def _use_font(prop):
+    prop.SetFontFamily(VTK_FONT_FILE)
+    prop.SetFontFile(FONT_FILE)
 
 
 class PyVistaRenderer(Renderer):
@@ -51,9 +69,15 @@ class PyVistaRenderer(Renderer):
             self.load_glyph = self.load_pts.glyph(geom=self.load_geom, scale=False, orient=False)
             pl.add_mesh(self.load_glyph, color=th.load)
 
-        pl.add_text(sc.title, position="upper_left", font_size=12, color=th.foreground)
-        self.status = pl.add_text("", position="lower_left", font_size=10, color=th.foreground)
-        pl.add_text(BRAND_TEXT, position="lower_right", font_size=10, color=th.foreground)
+        texts = [pl.add_text(sc.title, position="upper_left", font_size=12, color=th.foreground),
+                 pl.add_text("", position="lower_left", font_size=10, color=th.foreground),
+                 pl.add_text(BRAND_TEXT, position="lower_right", font_size=10, color=th.foreground)]
+        self.status = texts[1]
+        for t in texts:
+            _use_font(t.GetTextProperty())
+        for bar in pl.scalar_bars.values():
+            _use_font(bar.GetTitleTextProperty())
+            _use_font(bar.GetLabelTextProperty())
 
         if sc.slider:
             label, vmin, vmax, cb_fn = sc.slider
@@ -62,12 +86,32 @@ class PyVistaRenderer(Renderer):
                                  style="modern")
 
         self._add_logos(pl, th)
-        pl.view_xy()
-        pl.camera.parallel_projection = True
-        pl.reset_camera()
-        pl.camera.zoom(1.15)
+        self._fit_camera(pl, sc)
         pl.show(interactive_update=True, auto_close=False)
         self.pl = pl
+
+    @staticmethod
+    def _fit_camera(pl, sc, pad=0.06):
+        """Parallel projection fitted to the model plus room for deformation/markers.
+
+        reset_camera() fits the bounding sphere, which leaves a slender beam
+        tiny; here the visible world box is fitted to the usable window area.
+        """
+        (xmin, ymin), (xmax, ymax) = sc.coords.min(axis=0), sc.coords.max(axis=0)
+        mark = 0.25 * (ymax - ymin) + 5.0          # room for support/load markers
+        ymin -= sc.warp_margin + mark
+        ymax += mark
+        w, h = (xmax - xmin) * (1 + 2 * pad), (ymax - ymin) * (1 + 2 * pad)
+        ww, wh = pl.window_size
+        aspect = ww / wh
+        fx0, fx1 = MODEL_VIEW_X
+        ps = max(0.5 * h / 0.8, 0.5 * w / (aspect * (fx1 - fx0)))   # half view height
+        # shift the view so the model is centred in the usable x range
+        cx = 0.5 * (xmin + xmax) + (0.5 - 0.5 * (fx0 + fx1)) * 2 * ps * aspect
+        cy = 0.5 * (ymin + ymax)
+        pl.camera_position = [(cx, cy, 1000.0), (cx, cy, 0.0), (0.0, 1.0, 0.0)]
+        pl.camera.parallel_projection = True
+        pl.camera.parallel_scale = ps
 
     @staticmethod
     def _add_logos(pl, th, height=0.07, right=0.99, top=0.985, gap=0.01):
