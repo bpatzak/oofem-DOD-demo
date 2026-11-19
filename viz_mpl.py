@@ -70,24 +70,38 @@ class MatplotlibRenderer(Renderer):
             self.slider.valtext.set_color(th.foreground)
             self.slider.on_changed(cb_fn)
 
-        self._add_logos(fig, th)
         self.fig, self.ax = fig, ax
+        self._logos = []
+        for path, aspect, scale in logo_images(th):
+            lax = fig.add_axes([0, 0, 0.01, 0.01])
+            lax.imshow(mpimg.imread(path))
+            lax.axis("off")
+            self._logos.append((lax, aspect, scale))
+        self._place_logos()
+        # figure-fraction positions depend on the window size: redo on resize
+        fig.canvas.mpl_connect("resize_event", lambda event: self._place_logos())
         plt.show(block=False)
         fig.canvas.draw()
 
-    @staticmethod
-    def _add_logos(fig, th, height=0.07, right=0.985, top=0.985, gap=0.012):
-        """Place logos right-aligned in the top-right corner (figure coordinates)."""
-        fw, fh = fig.get_size_inches()
-        x = right
-        for path, aspect, scale in reversed(logo_images(th)):
-            lh = height * scale
-            w = lh * aspect * fh / fw
+    def _place_logos(self, height_px=34, right_px=12, top_px=6, gap_px=14, max_width=0.38):
+        """Right-align logos in the top-right corner with fixed pixel sizes.
+
+        Converted to figure fractions for the current window size, so the
+        logos keep their size and corner position when the window is resized;
+        in narrow windows they shrink to at most max_width of the width.
+        """
+        ww, wh = self.fig.canvas.get_width_height()
+        if ww <= 0 or wh <= 0:
+            return
+        total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
+        f = min(1.0, max_width * ww / total) if total > 0 else 1.0
+        x = ww - right_px
+        for lax, aspect, scale in reversed(self._logos):
+            h = height_px * scale * f
+            w = h * aspect
             x -= w
-            lax = fig.add_axes([x, top - lh, w, lh])
-            lax.imshow(mpimg.imread(path))
-            lax.axis("off")
-            x -= gap
+            lax.set_position([x / ww, (wh - top_px - h) / wh, w / ww, h / wh])
+            x -= gap_px * f
 
     @staticmethod
     def _outline(xy):
