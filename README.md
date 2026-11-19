@@ -29,6 +29,8 @@ python demo.py --geometry beam4pb --param load_span=80
 python demo.py --bench 200                       # solve timings for several mesh sizes
 python demo.py --list                            # geometries, parameters, fields
 ```
+Press `q` or `Esc` in the window (or close it) to quit.
+
 `--max` is the largest expected prescribed displacement. The colour scale is
 fixed from it, using the unit solution × max (exact for the linear model), so
 the stress builds up gradually within a stable scale. Timing statistics per
