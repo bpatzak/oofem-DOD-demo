@@ -22,6 +22,12 @@ class MatplotlibRenderer(Renderer):
         self.sc = sc
         plt.ion()
         fig = plt.figure(figsize=(14, 4.8), facecolor=th.background)
+        # In interactive mode pyplot redraws the figure whenever any artist
+        # changes. Dragging the slider then triggers a full redraw per mouse
+        # move, Tk keeps processing that stream inside flush_events() and the
+        # main loop stalls until the mouse stops. The loop draws explicitly
+        # (update/idle), so drop the automatic redraw.
+        fig.stale_callback = None
         try:
             fig.canvas.manager.set_window_title(WINDOW_TITLE)
         except AttributeError:
@@ -71,7 +77,17 @@ class MatplotlibRenderer(Renderer):
             self.slider = Slider(sax, label, vmin, vmax, valinit=vmin, valfmt="%.2f", color=th.load)
             self.slider.label.set_color(th.foreground)
             self.slider.valtext.set_color(th.foreground)
-            self.slider.on_changed(cb_fn)
+            # Same for the slider's own redraw on each move (see above). The
+            # main loop redraws every frame; idle() covers moves that do not
+            # trigger a solve (--skip-unchanged).
+            self.slider.drawon = False
+            self._slider_moved = False
+
+            def on_changed(val):
+                self._slider_moved = True
+                cb_fn(val)
+            self.slider.on_changed(on_changed)
+        self._slider_moved = False
 
         self.fig, self.ax = fig, ax
         self._logos = []
@@ -133,10 +149,14 @@ class MatplotlibRenderer(Renderer):
             p = def_coords[self.load_ids]
             self.load_mark.set_data(p[:, 0], p[:, 1] + 1.0)
         self.status.set_text(status)
+        self._slider_moved = False
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
     def idle(self):
+        if self._slider_moved:          # show the new slider position
+            self._slider_moved = False
+            self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
     def is_open(self):
