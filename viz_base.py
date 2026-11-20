@@ -75,7 +75,8 @@ class Scene:
     warp_margin: float    # extra view margin for the deformed shape [length]
     theme: Theme
     smooth: bool = False  # nodal (contour-like) instead of constant per-cell colouring
-    # Element edges (the FE grid) are always drawn, by design of the demo.
+    show_mesh: bool = True   # draw element edges (the FE grid)
+    mesh_alpha: float = 0.35  # opacity of the element edges (0 = invisible, 1 = opaque)
     slider: object = None  # optional (label, vmin, vmax, callback) for manual input
 
 

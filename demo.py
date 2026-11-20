@@ -41,6 +41,9 @@ def parse_args(argv=None):
     ap.add_argument("--warp", type=float, default=1.0, help="displacement magnification for display")
     ap.add_argument("--smooth", action="store_true", help="smooth nodal colouring (PyVista)")
     ap.add_argument("--bands", type=int, default=None, help="number of discrete colour bands (PyVista)")
+    ap.add_argument("--no-mesh", action="store_true", help="do not draw the element edges")
+    ap.add_argument("--mesh-alpha", type=float, default=0.35,
+                    help="opacity of the element edges, 0..1 (default 0.35)")
     ap.add_argument("--report", type=int, default=50, help="print timing statistics every N frames")
     ap.add_argument("--frames", type=int, default=0, help="stop after N frames (0 = until window closed)")
     ap.add_argument("--no-render", action="store_true", help="run the loop without graphics")
@@ -155,6 +158,7 @@ def run(args):
                              field_label=f"{field.label} [{field.unit}]", clim=clim,
                              signed=field.symmetric, title=f"{spec.title}\n{info}", groups=spec.groups,
                              warp_margin=umax, theme=THEMES[args.theme], smooth=smooth,
+                             show_mesh=not args.no_mesh, mesh_alpha=args.mesh_alpha,
                              slider=slider))
 
     stats = Stats()

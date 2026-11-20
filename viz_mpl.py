@@ -9,6 +9,7 @@ from matplotlib.collections import PolyCollection
 from matplotlib.widgets import Slider
 
 import matplotlib.image as mpimg
+from matplotlib.colors import to_rgba
 
 from viz_base import BRAND_TEXT, QUIT_KEYS, WINDOW_TITLE, Renderer, logo_images
 
@@ -33,7 +34,8 @@ class MatplotlibRenderer(Renderer):
         ax.fill(*self._outline(xy), facecolor="none", edgecolor=th.outline, lw=0.8, ls="--")
         self.coll = PolyCollection(xy[sc.cells], array=np.zeros(len(sc.cells)),
                                    cmap=th.cmap_signed if sc.signed else th.cmap_positive,
-                                   edgecolors=th.edges, linewidths=0.3)
+                                   edgecolors=to_rgba(th.edges, sc.mesh_alpha) if sc.show_mesh else "none",
+                                   linewidths=0.3 if sc.show_mesh else 0.0)
         self.coll.set_clim(*sc.clim)
         ax.add_collection(self.coll)
 
