@@ -96,7 +96,8 @@ class MatplotlibRenderer(Renderer):
 
         Converted to figure fractions for the current window size, so the
         logos keep their size and corner position when the window is resized;
-        in narrow windows they shrink to at most max_width of the width.
+        in narrow windows they shrink to at most max_width of the width. Logos
+        of different heights (LOGOS "scale") are centred vertically in the row.
         """
         ww, wh = self.fig.canvas.get_width_height()
         if ww <= 0 or wh <= 0:
@@ -104,12 +105,14 @@ class MatplotlibRenderer(Renderer):
         height_px = height_px or self.sc.logo_height
         total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
         f = min(1.0, max_width * ww / total) if total > 0 else 1.0
+        row_h = max((height_px * s * f for _, _, s in self._logos), default=0.0)
+        row_bottom = wh - top_px - row_h
         x = ww - right_px
         for lax, aspect, scale in reversed(self._logos):
             h = height_px * scale * f
             w = h * aspect
             x -= w
-            lax.set_position([x / ww, (wh - top_px - h) / wh, w / ww, h / wh])
+            lax.set_position([x / ww, (row_bottom + 0.5 * (row_h - h)) / wh, w / ww, h / wh])
             x -= gap_px * f
 
     @staticmethod

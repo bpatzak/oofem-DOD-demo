@@ -164,23 +164,25 @@ class PyVistaRenderer(Renderer):
         coordinates VTK expects, so the logos keep their size, aspect ratio and
         corner position when the window is resized. In narrow windows they are
         shrunk to at most max_width of the window width, leaving room for the
-        title. Returns the y pixel coordinate of the bottom of the logo row.
+        title. Logos of different heights (LOGOS "scale") are centred vertically
+        in the row. Returns the y pixel coordinate of the bottom of the logo row.
         """
         ww, wh = size
         height_px = height_px or self.sc.logo_height
         total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
         f = min(1.0, max_width * ww / total) if total > 0 else 1.0
-        x, bottom = ww - right_px, wh
+        row_h = max((height_px * s * f for _, _, s in self._logos), default=0.0)
+        row_bottom = wh - top_px - row_h
+        x = ww - right_px
         for widget, aspect, scale in reversed(self._logos):
             h = height_px * scale * f
             w = h * aspect
             x -= w
             rep = widget.GetRepresentation()
-            rep.SetPosition(x / ww, (wh - top_px - h) / wh)
+            rep.SetPosition(x / ww, (row_bottom + 0.5 * (row_h - h)) / wh)
             rep.SetPosition2(w / ww, h / wh)
-            bottom = min(bottom, wh - top_px - h)
             x -= gap_px * f
-        return bottom
+        return row_bottom
 
     def update(self, def_coords, cell_values, node_values, status):
         self.grid.points[:, :2] = def_coords
