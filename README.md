@@ -10,6 +10,21 @@ stiffness matrix is assembled and factorized in the first step only, so later
 steps are just a right-hand side plus a back-substitution. The deformed mesh is
 then redrawn, coloured by the selected stress or strain field.
 
+## Prerequisites
+- **OOFEM built with Python bindings.** Configure OOFEM with
+  `USE_PYBIND_BINDINGS=ON` (and the default `USE_SM=ON`) to get the `oofempy`
+  module. A **Release build is recommended**: in a Debug build the solve is
+  much slower, and the loop will not run in real time.
+  ```
+  cd /path/to/oofem
+  cmake -S . -B releaseBuild -DCMAKE_BUILD_TYPE=Release -DUSE_PYBIND_BINDINGS=ON
+  cmake --build releaseBuild --target oofempy -j8
+  ```
+  This needs the Python development headers (e.g. `python3-dev`). Build with
+  the same Python interpreter that runs the demo, because the module only
+  works with the Python version it was built for.
+- Python 3 with numpy and matplotlib, plus PyVista for the default renderer.
+
 ## Setup
 ```
 python3 -m venv --system-site-packages .venv
