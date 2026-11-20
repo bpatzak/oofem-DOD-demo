@@ -38,6 +38,9 @@ def parse_args(argv=None):
     ap.add_argument("--period", type=float, default=6.0, help="period of sine/ramp source [s]")
     ap.add_argument("--mode", default="solve", choices=("solve", "scale"),
                     help="solve: OOFEM solve each frame; scale: superpose precomputed unit solutions")
+    ap.add_argument("--skip-unchanged", type=float, default=None, metavar="TOL",
+                    help="do not re-solve while every input differs from the last solved "
+                         "value by at most TOL (input units, e.g. 0.001 mm); off by default")
     ap.add_argument("--warp", type=float, default=1.0, help="displacement magnification for display")
     ap.add_argument("--smooth", action="store_true", help="smooth nodal colouring (PyVista)")
     ap.add_argument("--bands", type=int, default=None, help="number of discrete colour bands (PyVista)")
@@ -170,10 +173,33 @@ def run(args):
 
     def ema_update(key, value, alpha=0.1):
         ema[key] = value if ema[key] == 0.0 else (1 - alpha) * ema[key] + alpha * value
+    res, skipped = None, 0
+    tol = args.skip_unchanged
+
+    def unchanged(inputs):
+        """True if no input moved more than tol from the last *solved* values.
+
+        Comparing with the last solved (not the last read) values means slow
+        drift below tol still accumulates and eventually triggers a solve.
+        """
+        return (tol is not None and res is not None
+                and all(abs(v - res.inputs.get(k, 0.0)) <= tol for k, v in inputs.items()))
+
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
         inputs = source.read()
         t1 = time.perf_counter()
+        if unchanged(inputs):
+            # nothing to compute or redraw: keep the window responsive and
+            # yield the CPU briefly instead of spinning
+            skipped += 1
+            if renderer is not None:
+                renderer.idle()
+            time.sleep(0.005)
+            frame += 1
+            if args.frames and frame >= args.frames:
+                break
+            continue
         res = model.solve(inputs)
         t2 = time.perf_counter()
         cvals, nvals = field.evaluate(res)
@@ -183,7 +209,7 @@ def run(args):
             vin = "   ".join(
                 f"{k} = {v:6.3f} mm   F{'' if len(inputs) == 1 else '_' + k} = "
                 f"{res.reactions.get(k, float('nan')):7.4f} N"
-                for k, v in inputs.items())
+                for k, v in res.inputs.items())
             fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
             status = (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
                       f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
@@ -198,11 +224,13 @@ def run(args):
                   post=t3 - t2, draw=t4 - t3, frame=t_frame)
         frame += 1
         if args.report and frame % args.report == 0:
-            print(f"[{frame:6d}] {stats.report()}", flush=True)
+            note = f"   skipped (unchanged input): {skipped}" if tol is not None else ""
+            print(f"[{frame:6d}] {stats.report()}{note}", flush=True)
         if args.frames and frame >= args.frames:
             break
     if renderer is not None:
         renderer.close()
+    print(f"frames {frame}: solved {frame - skipped}, skipped (unchanged input) {skipped}")
 
 
 def main(argv=None):
