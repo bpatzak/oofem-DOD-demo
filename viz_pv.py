@@ -89,14 +89,15 @@ class PyVistaRenderer(Renderer):
             _use_font(bar.GetTitleTextProperty())
             _use_font(bar.GetLabelTextProperty())
 
+        self.slider = None
         if sc.slider:
             label, vmin, vmax, cb_fn = sc.slider
             # "always": call back on every move while dragging, not only on release
-            slider = pl.add_slider_widget(cb_fn, rng=[vmin, vmax], value=vmin, title=label,
-                                          pointa=(0.30, 0.90), pointb=(0.70, 0.90),
-                                          color=th.foreground, style="modern",
-                                          interaction_event="always", fmt="%.2f")
-            rep = slider.GetRepresentation()
+            self.slider = pl.add_slider_widget(cb_fn, rng=[vmin, vmax], value=vmin, title=label,
+                                               color=th.foreground, style="modern",
+                                               interaction_event="always", fmt="%.2f",
+                                               tube_width=0.025, slider_width=0.03)
+            rep = self.slider.GetRepresentation()
             _use_font(rep.GetTitleProperty())
             _use_font(rep.GetLabelProperty())
             rep.GetTitleProperty().BoldOff()
@@ -129,8 +130,30 @@ class PyVistaRenderer(Renderer):
         self._size = size
         logo_bottom = self._place_logos(size)
         self._place_scalar_bar(size, top_px=logo_bottom - 24)   # room for the bar title
-        self._fit_camera(self.pl, self.sc, size)
+        bottom_px = self._place_slider(size) if self.slider is not None else 0
+        self._fit_camera(self.pl, self.sc, size, bottom_px=bottom_px)
         return True
+
+    # Slider geometry in pixels. VTK sizes the slider's title and value label
+    # relative to the bar length, so a fixed pixel length keeps the text size
+    # fixed when the window is resized.
+    SLIDER_LENGTH_PX = 520
+    SLIDER_Y_PX = 90            # bar centre: above the two-line status text and the bar title
+
+    def _place_slider(self, size):
+        """Put the slider in a strip above the status text, centred under the model.
+
+        The title is drawn below the bar and the current value above it, so the
+        strip spans roughly SLIDER_Y_PX +- 30 px. Returns the y pixel coordinate
+        of the top of the strip, which the camera fit keeps free of the model.
+        """
+        ww, wh = size
+        length = min(self.SLIDER_LENGTH_PX, 0.4 * ww)
+        xc = 0.5 * sum(MODEL_VIEW_X) * ww
+        rep = self.slider.GetRepresentation()
+        rep.GetPoint1Coordinate().SetValue((xc - 0.5 * length) / ww, self.SLIDER_Y_PX / wh)
+        rep.GetPoint2Coordinate().SetValue((xc + 0.5 * length) / ww, self.SLIDER_Y_PX / wh)
+        return self.SLIDER_Y_PX + 0.06 * length
 
     def _place_scalar_bar(self, size, top_px, bottom_px=70):
         """Fit the vertical colour bar between the logos and the status text."""
@@ -141,11 +164,13 @@ class PyVistaRenderer(Renderer):
             bar.SetHeight(max(top_px - bottom_px, 40) / wh)
 
     @staticmethod
-    def _fit_camera(pl, sc, size, pad=0.06):
+    def _fit_camera(pl, sc, size, pad=0.06, bottom_px=0):
         """Parallel projection fitted to the model plus room for deformation/markers.
 
         reset_camera() fits the bounding sphere, which leaves a slender beam
-        tiny; here the visible world box is fitted to the usable window area.
+        tiny; here the visible world box is fitted to the usable window area:
+        MODEL_VIEW_X horizontally, and vertically from bottom_px (at least 10 %
+        of the height, kept free for the status text and slider) to 90 %.
         """
         (xmin, ymin), (xmax, ymax) = sc.coords.min(axis=0), sc.coords.max(axis=0)
         mark = 0.25 * (ymax - ymin) + 5.0          # room for support/load markers
@@ -155,10 +180,11 @@ class PyVistaRenderer(Renderer):
         ww, wh = size
         aspect = ww / wh
         fx0, fx1 = MODEL_VIEW_X
-        ps = max(0.5 * h / 0.8, 0.5 * w / (aspect * (fx1 - fx0)))   # half view height
-        # shift the view so the model is centred in the usable x range
+        fy0, fy1 = min(max(0.1, bottom_px / wh), 0.6), 0.9
+        ps = max(0.5 * h / (fy1 - fy0), 0.5 * w / (aspect * (fx1 - fx0)))   # half view height
+        # shift the view so the model is centred in the usable x and y ranges
         cx = 0.5 * (xmin + xmax) + (0.5 - 0.5 * (fx0 + fx1)) * 2 * ps * aspect
-        cy = 0.5 * (ymin + ymax)
+        cy = 0.5 * (ymin + ymax) + (0.5 - 0.5 * (fy0 + fy1)) * 2 * ps
         pl.camera_position = [(cx, cy, 1000.0), (cx, cy, 0.0), (0.0, 1.0, 0.0)]
         pl.camera.parallel_projection = True
         pl.camera.parallel_scale = ps
