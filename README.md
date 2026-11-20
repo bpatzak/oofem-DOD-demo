@@ -28,7 +28,13 @@ python demo.py --source manual --max 8           # slider drives the displacemen
 python demo.py --geometry beam4pb --param load_span=80
 python demo.py --bench 200                       # solve timings for several mesh sizes
 python demo.py --list                            # geometries, parameters, fields
+python demo.py --skip-unchanged 0.001            # no re-solve while input moves < 0.001 mm
+python demo.py --mesh-alpha 0.2                  # fainter element edges (--no-mesh hides them)
+python demo.py --logo-height 40                  # logo size in pixels
 ```
+The status line shows the prescribed displacement, the corresponding reaction
+force `F` (the force the actuator applies, positive in the direction of the
+displacement), the maximum of the displayed field and the timings.
 Press `q` or `Esc` in the window (or close it) to quit.
 
 `--max` is the largest expected prescribed displacement. The colour scale is
