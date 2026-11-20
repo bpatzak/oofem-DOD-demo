@@ -14,7 +14,9 @@ ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 # the common height for that logo. Missing files are skipped.
 LOGOS = [
     {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png"},  # Faculty of Civil Engineering, CTU
-    {"light": "oofem_logo.png"},   # OOFEM (filled wordmark, readable on light and dark)
+    # OOFEM: filled wordmark, readable on light and dark; very wide (8.6:1), so
+    # it is drawn at 60 % of the common height to balance the faculty logo
+    {"light": "oofem_logo.png", "scale": 0.6},
 ]
 
 # Keys that close the visualization window and end the main loop
