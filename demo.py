@@ -179,7 +179,11 @@ def run(args):
         cvals, nvals = field.evaluate(res)
         t3 = time.perf_counter()
         if renderer is not None:
-            vin = ", ".join(f"{k} = {v:6.3f} mm" for k, v in inputs.items())
+            # controlled displacement and the corresponding reaction per channel
+            vin = "   ".join(
+                f"{k} = {v:6.3f} mm   F{'' if len(inputs) == 1 else '_' + k} = "
+                f"{res.reactions.get(k, float('nan')):7.4f} N"
+                for k, v in inputs.items())
             fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
             status = (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
                       f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
