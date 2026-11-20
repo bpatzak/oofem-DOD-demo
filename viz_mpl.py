@@ -29,6 +29,7 @@ class MatplotlibRenderer(Renderer):
         bottom = 0.22 if sc.slider else 0.12
         ax = fig.add_axes([0.04, bottom, 0.84, 0.72], facecolor=th.background)
         cax = fig.add_axes([0.90, bottom, 0.015, 0.72])
+        self.cax, self.cax_box = cax, (0.90, bottom, 0.015, 0.72)
 
         xy = sc.coords
         ax.fill(*self._outline(xy), facecolor="none", edgecolor=th.outline, lw=0.8, ls="--")
@@ -67,7 +68,7 @@ class MatplotlibRenderer(Renderer):
         if sc.slider:
             label, vmin, vmax, cb_fn = sc.slider
             sax = fig.add_axes([0.12, 0.05, 0.6, 0.04], facecolor=th.background)
-            self.slider = Slider(sax, label, vmin, vmax, valinit=vmin, color=th.load)
+            self.slider = Slider(sax, label, vmin, vmax, valinit=vmin, valfmt="%.2f", color=th.load)
             self.slider.label.set_color(th.foreground)
             self.slider.valtext.set_color(th.foreground)
             self.slider.on_changed(cb_fn)
@@ -98,6 +99,7 @@ class MatplotlibRenderer(Renderer):
         logos keep their size and corner position when the window is resized;
         in narrow windows they shrink to at most max_width of the width. Logos
         of different heights (LOGOS "scale") are centred vertically in the row.
+        The colour bar is shortened if needed so it stays below the logos.
         """
         ww, wh = self.fig.canvas.get_width_height()
         if ww <= 0 or wh <= 0:
@@ -114,6 +116,9 @@ class MatplotlibRenderer(Renderer):
             x -= w
             lax.set_position([x / ww, (row_bottom + 0.5 * (row_h - h)) / wh, w / ww, h / wh])
             x -= gap_px * f
+        cx, cy, cw, ch = self.cax_box
+        top = min(cy + ch, (row_bottom - 10) / wh)
+        self.cax.set_position([cx, cy, cw, max(top - cy, 0.05)])
 
     @staticmethod
     def _outline(xy):
