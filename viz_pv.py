@@ -91,9 +91,15 @@ class PyVistaRenderer(Renderer):
 
         if sc.slider:
             label, vmin, vmax, cb_fn = sc.slider
-            pl.add_slider_widget(cb_fn, rng=[vmin, vmax], value=vmin, title=label,
-                                 pointa=(0.30, 0.90), pointb=(0.70, 0.90), color=th.foreground,
-                                 style="modern")
+            # "always": call back on every move while dragging, not only on release
+            slider = pl.add_slider_widget(cb_fn, rng=[vmin, vmax], value=vmin, title=label,
+                                          pointa=(0.30, 0.90), pointb=(0.70, 0.90),
+                                          color=th.foreground, style="modern",
+                                          interaction_event="always", fmt="%.2f")
+            rep = slider.GetRepresentation()
+            _use_font(rep.GetTitleProperty())
+            _use_font(rep.GetLabelProperty())
+            rep.GetTitleProperty().BoldOff()
 
         self.pl = pl
         self._quit = False
