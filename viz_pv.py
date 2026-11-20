@@ -119,11 +119,12 @@ class PyVistaRenderer(Renderer):
         """
         size = tuple(self.pl.window_size)
         if size == self._size or min(size) <= 0:
-            return
+            return False
         self._size = size
         logo_bottom = self._place_logos(size)
         self._place_scalar_bar(size, top_px=logo_bottom - 24)   # room for the bar title
         self._fit_camera(self.pl, self.sc, size)
+        return True
 
     def _place_scalar_bar(self, size, top_px, bottom_px=70):
         """Fit the vertical colour bar between the logos and the status text."""
@@ -197,6 +198,11 @@ class PyVistaRenderer(Renderer):
         # One explicit render, then handle window events. Plotter.update()
         # installs a repeating timer that causes extra renders per frame.
         self.pl.render()
+        self.pl.iren.process_events()
+
+    def idle(self):
+        if self._layout():              # window was resized: redraw once
+            self.pl.render()
         self.pl.iren.process_events()
 
     def _set_status(self, text):

@@ -128,6 +128,9 @@ class MatplotlibRenderer(Renderer):
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
+    def idle(self):
+        self.fig.canvas.flush_events()
+
     def is_open(self):
         return not self._quit and plt.fignum_exists(self.fig.number)
 

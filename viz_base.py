@@ -89,6 +89,9 @@ class Renderer:
         """Redraw with deformed coordinates and new values; status is a text line."""
         raise NotImplementedError
 
+    def idle(self):
+        """Keep the window responsive (events, resize) without new data."""
+
     def is_open(self):
         raise NotImplementedError
 
