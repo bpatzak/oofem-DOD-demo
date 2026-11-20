@@ -124,6 +124,7 @@ class FEModel:
         eset = oofempy.createSet(1, domain, elements=tuple(range(1, spec.n_cells + 1)))
 
         util.setupDomain(domain, nodes, elems, (cs,), (mat,), bcs, (), (ltf,), (eset,))
+        self._reaction_terms = self._build_reaction_terms()
 
         # In-memory VTK export: displacement (primvar 1), stress/strain (IST 1, 4)
         # as element averages (cellvars) and optionally smoothed nodal values (vars).
@@ -143,6 +144,44 @@ class FEModel:
         # its references alive as well.
         self._keep = (ltf, bcs, nodes, mat, cs, elems, eset)
         self._checked = False   # export ordering verified against spec
+
+    def _build_reaction_terms(self):
+        """For each control channel: elements touching its controlled DOFs.
+
+        Returns {channel: [(element number, [(index in element vector, sign)])]}.
+        The reaction is assembled from the internal force vectors of these few
+        elements only, whose DOFs are ordered node by node (u, v per node).
+        """
+        spec = self.spec
+        node_elems = [[] for _ in range(spec.n_nodes)]
+        for ei, cell in enumerate(spec.cells):
+            for k, n in enumerate(cell):
+                node_elems[n].append((ei, k))
+        terms = {}
+        for ch, items in spec.controls.items():
+            by_elem = {}
+            for ids, dof, sign in items:
+                j = DOFS.index(dof)
+                for nid in np.atleast_1d(ids):
+                    for ei, k in node_elems[int(nid)]:
+                        by_elem.setdefault(ei + 1, []).append((len(DOFS) * k + j, float(sign)))
+            terms[ch] = list(by_elem.items())
+        return terms
+
+    def _reactions(self):
+        """Channel reactions from element internal forces at the current step."""
+        oofempy = self.oofempy
+        ts = self.problem.giveCurrentStep()
+        f = oofempy.FloatArray()
+        out = {}
+        for ch, elems in self._reaction_terms.items():
+            total = 0.0
+            for enum, entries in elems:
+                self.domain.giveElement(enum).giveCharacteristicVector(
+                    f, oofempy.CharType.InternalForcesVector, oofempy.ValueModeType.VM_Total, ts)
+                total += sum(sign * f[idx] for idx, sign in entries)
+            out[ch] = total
+        return out
 
     def unit_results(self):
         """Solution for each control channel at unit value (others zero).
@@ -213,7 +252,7 @@ class FEModel:
                       cell_stress=np.array(reg.getCellValues(ist.IST_StressTensor)),
                       cell_strain=np.array(reg.getCellValues(ist.IST_StrainTensor)),
                       node_stress=node_stress, node_strain=node_strain,
-                      inputs=dict(values))
+                      inputs=dict(values), reactions=self._reactions())
 
     @property
     def n_equations(self):

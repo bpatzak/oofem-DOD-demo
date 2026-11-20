@@ -48,20 +48,28 @@ class Result:
     node_stress: np.ndarray   # (nn, 9) smoothed nodal stress (for contours)
     node_strain: np.ndarray   # (nn, 9) smoothed nodal strain
     inputs: dict              # channel values this result corresponds to
+    # Reaction per control channel: the force the actuator applies, i.e. the sum
+    # of nodal forces on the controlled DOFs weighted by the channel signs;
+    # positive in the direction of a positive channel value.
+    reactions: dict = field(default_factory=dict)
 
     def scaled(self, factor):
         """Return result multiplied by a scalar (valid for linear problems)."""
         return Result(self.coords, self.cells, factor * self.disp,
                       factor * self.cell_stress, factor * self.cell_strain,
                       factor * self.node_stress, factor * self.node_strain,
-                      {k: factor * v for k, v in self.inputs.items()})
+                      {k: factor * v for k, v in self.inputs.items()},
+                      {k: factor * v for k, v in self.reactions.items()})
 
     def __add__(self, other):
-        inputs = dict(self.inputs)
-        for k, v in other.inputs.items():
-            inputs[k] = inputs.get(k, 0.0) + v
+        def add(a, b):
+            out = dict(a)
+            for k, v in b.items():
+                out[k] = out.get(k, 0.0) + v
+            return out
         return Result(self.coords, self.cells, self.disp + other.disp,
                       self.cell_stress + other.cell_stress,
                       self.cell_strain + other.cell_strain,
                       self.node_stress + other.node_stress,
-                      self.node_strain + other.node_strain, inputs)
+                      self.node_strain + other.node_strain,
+                      add(self.inputs, other.inputs), add(self.reactions, other.reactions))
