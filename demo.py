@@ -42,6 +42,7 @@ def parse_args(argv=None):
     ap.add_argument("--smooth", action="store_true", help="smooth nodal colouring (PyVista)")
     ap.add_argument("--bands", type=int, default=None, help="number of discrete colour bands (PyVista)")
     ap.add_argument("--no-mesh", action="store_true", help="do not draw the element edges")
+    ap.add_argument("--logo-height", type=int, default=46, help="height of the logos in pixels")
     ap.add_argument("--mesh-alpha", type=float, default=0.35,
                     help="opacity of the element edges, 0..1 (default 0.35)")
     ap.add_argument("--report", type=int, default=50, help="print timing statistics every N frames")
@@ -159,6 +160,7 @@ def run(args):
                              signed=field.symmetric, title=f"{spec.title}\n{info}", groups=spec.groups,
                              warp_margin=umax, theme=THEMES[args.theme], smooth=smooth,
                              show_mesh=not args.no_mesh, mesh_alpha=args.mesh_alpha,
+                             logo_height=args.logo_height,
                              slider=slider))
 
     stats = Stats()

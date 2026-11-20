@@ -91,7 +91,7 @@ class MatplotlibRenderer(Renderer):
         plt.show(block=False)
         fig.canvas.draw()
 
-    def _place_logos(self, height_px=34, right_px=12, top_px=6, gap_px=14, max_width=0.38):
+    def _place_logos(self, height_px=None, right_px=12, top_px=6, gap_px=14, max_width=0.38):
         """Right-align logos in the top-right corner with fixed pixel sizes.
 
         Converted to figure fractions for the current window size, so the
@@ -101,6 +101,7 @@ class MatplotlibRenderer(Renderer):
         ww, wh = self.fig.canvas.get_width_height()
         if ww <= 0 or wh <= 0:
             return
+        height_px = height_px or self.sc.logo_height
         total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
         f = min(1.0, max_width * ww / total) if total > 0 else 1.0
         x = ww - right_px

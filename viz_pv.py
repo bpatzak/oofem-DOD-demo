@@ -122,7 +122,7 @@ class PyVistaRenderer(Renderer):
             return
         self._size = size
         logo_bottom = self._place_logos(size)
-        self._place_scalar_bar(size, top_px=logo_bottom - 10)
+        self._place_scalar_bar(size, top_px=logo_bottom - 24)   # room for the bar title
         self._fit_camera(self.pl, self.sc, size)
 
     def _place_scalar_bar(self, size, top_px, bottom_px=70):
@@ -156,7 +156,7 @@ class PyVistaRenderer(Renderer):
         pl.camera.parallel_projection = True
         pl.camera.parallel_scale = ps
 
-    def _place_logos(self, size, height_px=40, right_px=12, top_px=8, gap_px=14, max_width=0.38):
+    def _place_logos(self, size, height_px=None, right_px=12, top_px=8, gap_px=14, max_width=0.38):
         """Right-align logos in the top-right corner with fixed pixel sizes.
 
         Sizes are given in pixels and converted to the viewport-normalized
@@ -166,6 +166,7 @@ class PyVistaRenderer(Renderer):
         title. Returns the y pixel coordinate of the bottom of the logo row.
         """
         ww, wh = size
+        height_px = height_px or self.sc.logo_height
         total = sum(height_px * s * a for _, a, s in self._logos) + gap_px * (len(self._logos) - 1)
         f = min(1.0, max_width * ww / total) if total > 0 else 1.0
         x, bottom = ww - right_px, wh

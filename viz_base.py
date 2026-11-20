@@ -8,12 +8,12 @@ from dataclasses import dataclass
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-# Logos shown in the top-right corner, left to right, top-aligned. Each entry
-# maps a theme name to an image file in ASSETS ("light" is the fallback for
-# other themes); "scale" multiplies the base logo height, so a compact logo
-# can be made larger than a wide wordmark. Missing files are skipped.
+# Logos shown in the top-right corner, left to right, all with the same height
+# (Scene.logo_height). Each entry maps a theme name to an image file in ASSETS
+# ("light" is the fallback for other themes); an optional "scale" multiplies
+# the common height for that logo. Missing files are skipped.
 LOGOS = [
-    {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png", "scale": 1.9},  # Faculty of Civil Engineering, CTU
+    {"light": "fsv_logo.png", "dark": "fsv_logo_dark.png"},  # Faculty of Civil Engineering, CTU
     {"light": "oofem_logo.png"},   # OOFEM (filled wordmark, readable on light and dark)
 ]
 
@@ -77,6 +77,7 @@ class Scene:
     smooth: bool = False  # nodal (contour-like) instead of constant per-cell colouring
     show_mesh: bool = True   # draw element edges (the FE grid)
     mesh_alpha: float = 0.35  # opacity of the element edges (0 = invisible, 1 = opaque)
+    logo_height: int = 46     # common logo height [px]; the faculty logo text needs >= ~44 px
     slider: object = None  # optional (label, vmin, vmax, callback) for manual input
 
 
