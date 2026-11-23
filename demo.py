@@ -90,6 +90,18 @@ def geometry_params(args):
     return out
 
 
+# labels of the on-screen text lines (title on top, status at the bottom),
+# padded to one width so the values start in one column; both renderers draw
+# these lines in a monospace font
+SCREEN_LABELS = ("geometry:", "model:", "input:", "simulation:", "stat:")
+LABEL_WIDTH = max(map(len, SCREEN_LABELS)) + 1
+
+
+def labelled(lines):
+    """[(label, text), ...] -> one string, one padded label per line."""
+    return "\n".join(f"{label:<{LABEL_WIDTH}}{text}" for label, text in lines)
+
+
 class Stats:
     """Per-phase timing statistics (mean and 95th percentile, in ms)."""
 
@@ -180,7 +192,9 @@ def run(args):
                 f"h = {args.h:g} mm · setup {1e3 * model.timing['setup']:.0f} ms")
         renderer.setup(Scene(coords=unit.coords, cells=unit.cells, cell_type=spec.cell_type,
                              field_label=f"{field.label} [{field.unit}]", clim=clim,
-                             signed=field.symmetric, title=f"{spec.title}\n{info}", groups=spec.groups,
+                             signed=field.symmetric,
+                             title=labelled([("geometry:", spec.title), ("model:", info)]),
+                             groups=spec.groups,
                              warp_margin=umax, theme=THEMES[args.theme], smooth=smooth,
                              show_mesh=not args.no_mesh, mesh_alpha=args.mesh_alpha,
                              logo_height=args.logo_height,
@@ -218,16 +232,12 @@ def run(args):
             f"{res.reactions.get(k, float('nan')):7.4f} N"
             for k, v in res.inputs.items())
         fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
-        lines = [
+        return labelled([
             ("input:", src_line),
             ("simulation:", f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}"),
             ("stat:", f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
                       f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)"),
-        ]
-        # labels padded to a common width, so the values start in one column
-        # (both renderers draw the status text in a monospace font)
-        width = max(len(label) for label, _ in lines) + 1
-        return "\n".join(f"{label:<{width}}{text}" for label, text in lines)
+        ])
 
     # what is on screen: last drawn (points, cell values, node values) and source status
     last_frame, shown_src = None, None

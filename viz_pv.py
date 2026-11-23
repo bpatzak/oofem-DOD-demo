@@ -81,12 +81,13 @@ class PyVistaRenderer(Renderer):
             self.load_glyph = self.load_pts.glyph(geom=self.load_geom, scale=False, orient=False)
             pl.add_mesh(self.load_glyph, color=th.load)
 
-        texts = [pl.add_text(sc.title, position="upper_left", font_size=12, color=th.foreground),
+        # title and status: labelled lines in the same monospace font and size
+        texts = [pl.add_text(sc.title, position="upper_left", font_size=10, color=th.foreground),
                  pl.add_text("", position="lower_left", font_size=10, color=th.foreground),
                  pl.add_text(BRAND_TEXT, position="lower_right", font_size=10, color=th.foreground)]
         self.status = texts[1]
         for t in texts:
-            _use_font(t.GetTextProperty(), MONO_FONT_FILE if t is self.status else FONT_FILE)
+            _use_font(t.GetTextProperty(), MONO_FONT_FILE if t is not texts[2] else FONT_FILE)
         for bar in pl.scalar_bars.values():
             _use_font(bar.GetTitleTextProperty())
             _use_font(bar.GetLabelTextProperty())

@@ -69,7 +69,9 @@ class MatplotlibRenderer(Renderer):
         cb.ax.tick_params(colors=th.foreground)
         cb.outline.set_edgecolor(th.outline)
 
-        ax.set_title(sc.title, color=th.foreground, loc="left")
+        # same monospace font and size as the status text (labelled, aligned lines)
+        ax.set_title(sc.title, color=th.foreground, loc="left", family="monospace",
+                     fontsize="medium")
         self.status = fig.text(0.04, 0.955, "", color=th.foreground, family="monospace", va="top")
         fig.text(0.985, 0.015, BRAND_TEXT, color=th.foreground, ha="right", va="bottom",
                  fontsize=10, alpha=0.8)
