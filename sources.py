@@ -4,8 +4,13 @@ read() must be non-blocking and return the *latest* value, so the FE loop
 never queues behind the experiment. A real device/socket source plugs in by
 implementing the same interface.
 """
+import http.client
 import math
+import re
+import sys
+import threading
 import time
+import urllib.request
 
 
 class Source:
@@ -65,4 +70,142 @@ class ManualSource(Source):
         return dict(self.values)
 
 
-SOURCES = {"sine": SineSource, "ramp": RampSource, "manual": ManualSource}
+TELEMETRY_PORT = 8765
+DEFAULT_TELEMETRY_URL = f"http://127.0.0.1:{TELEMETRY_PORT}/api/values"
+
+
+class TelemetrySource(Source):
+    """Displacement measured on the testing machine, read over the LAN.
+
+    Polls the telemetry bridge (Experiment/server.py) at GET /api/values,
+    which answers either "relative_mm,force_N" (plain text, 2 decimals) or
+    204 No Content when the machine is not publishing fresh data.
+
+    A background thread does the HTTP requests and keeps only the latest
+    sample, so read() never waits for the network and the FE loop never
+    queues behind the experiment. When the data stop (204, network error),
+    the last displacement is held, so the model does not jump back to zero;
+    info() then reports the problem in the status line.
+    """
+
+    # same format check as Experiment/receiver.py (parse_values)
+    VALUES_RE = re.compile(r"(-?\d+\.\d{2}),(-?\d+\.\d{2})")
+
+    def __init__(self, channels, url=DEFAULT_TELEMETRY_URL, rate=15.0, scale=1.0, timeout=1.0):
+        super().__init__(channels)
+        self.url = url
+        self.rate = float(rate)        # polling frequency [Hz]
+        self.scale = float(scale)      # channel value = scale * measured displacement
+        self.timeout = float(timeout)  # per-request timeout [s]
+
+        # latest sample, shared with the polling thread (guarded by _lock)
+        self._lock = threading.Lock()
+        self._disp = 0.0          # last valid displacement [mm]; 0 before the first sample
+        self._force = 0.0         # last valid force [N]
+        self._fresh = False       # True while the last request returned a sample
+        self._t_last = None       # time.monotonic() of the last valid sample
+        self._n_ok = 0            # number of valid samples received
+        self._error = None        # text of the current error, None if OK
+
+        # no proxies: the machine PC is on the local network (like trust_env=False)
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="telemetry", daemon=True)
+        self._thread.start()
+
+    @classmethod
+    def parse(cls, text):
+        """'1.23,-45.60' -> (1.23, -45.6); raise ValueError on anything else."""
+        m = cls.VALUES_RE.fullmatch(text.strip())
+        if m is None:
+            raise ValueError(f"invalid /api/values response {text[:40]!r}")
+        disp, force = map(float, m.groups())
+        if not (math.isfinite(disp) and math.isfinite(force)):
+            raise ValueError("non-finite measurement")
+        return disp, force
+
+    @staticmethod
+    def _log(msg):
+        print(f"[telemetry] {msg}", file=sys.stderr, flush=True)
+
+    def _poll_once(self):
+        """One GET request; updates the shared state. Raises on failure."""
+        with self._opener.open(self.url, timeout=self.timeout) as resp:
+            status = resp.status
+            body = resp.read(256).decode("ascii", "replace")
+        if status == 204:
+            # server is up, but the machine is not sending: keep the last values
+            with self._lock:
+                self._fresh = False
+                self._error = "no fresh data from the machine"
+            return
+        disp, force = self.parse(body)
+        with self._lock:
+            self._disp, self._force = disp, force
+            self._fresh, self._error = True, None
+            self._t_last = time.monotonic()
+            self._n_ok += 1
+
+    def _run(self):
+        """Polling loop of the background thread."""
+        interval = 1.0 / self.rate
+        delay = 1.0               # reconnect delay, grows on repeated errors
+        logged = None             # last message written to stderr (avoid flooding)
+        next_tick = time.monotonic()
+        while not self._stop.is_set():
+            try:
+                self._poll_once()
+            except (OSError, ValueError, http.client.HTTPException) as exc:
+                # OSError covers URLError, HTTPError, timeouts, refused connections;
+                # URLError keeps the useful part (e.g. "Connection refused") in .reason
+                msg = f"{type(exc).__name__}: {getattr(exc, 'reason', exc)}"
+                with self._lock:
+                    self._fresh, self._error = False, msg
+                if msg != logged:
+                    self._log(f"{msg} ({self.url}); retrying")
+                    logged = msg
+                # back off like Experiment/receiver.py: 1 s, x1.7, at most 5 s
+                self._stop.wait(delay)
+                delay = min(5.0, delay * 1.7)
+                next_tick = time.monotonic()
+                continue
+
+            # report state changes (connected / waiting for the machine) once
+            with self._lock:
+                state = self._error or "receiving data"
+            if state != logged:
+                self._log(state)
+                logged = state
+            delay = 1.0
+
+            # fixed polling rate; if a request took too long, skip missed ticks
+            next_tick += interval
+            now = time.monotonic()
+            if next_tick < now:
+                next_tick = now
+            self._stop.wait(next_tick - now)
+
+    def read(self):
+        with self._lock:
+            v = self.scale * self._disp
+        return {c: v for c in self.channels}
+
+    def info(self):
+        with self._lock:
+            n_ok, fresh, force, err, t_last = (self._n_ok, self._fresh, self._force,
+                                               self._error, self._t_last)
+        if n_ok == 0:
+            return f"telemetry: {(err or 'waiting for data')[:60]}"
+        text = f"measured F = {force:.2f} N"
+        if not fresh:
+            age = time.monotonic() - t_last
+            text += f" (held {age:.0f} s: {(err or 'no data')[:50]})"
+        return text
+
+    def close(self):
+        self._stop.set()
+        self._thread.join(timeout=2.0 * self.timeout + 1.0)
+
+
+SOURCES = {"sine": SineSource, "ramp": RampSource, "manual": ManualSource,
+           "telemetry": TelemetrySource}
