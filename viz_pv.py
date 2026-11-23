@@ -27,14 +27,16 @@ CELL_TYPES = {"quad": pv.CellType.QUAD, "tri": pv.CellType.TRIANGLE}
 # VTK's built-in fonts lack Greek letters (σ, ε, γ); use a TrueType font that
 # has them. DejaVu Sans ships with matplotlib, so it is always available.
 FONT_FILE = font_manager.findfont("DejaVu Sans")
+# monospace variant for the status text, whose labels and numbers are aligned in columns
+MONO_FONT_FILE = font_manager.findfont("DejaVu Sans Mono")
 
 # Fraction of the window width usable by the model (scalar bar sits to the right)
 MODEL_VIEW_X = (0.02, 0.86)
 
 
-def _use_font(prop):
+def _use_font(prop, font_file=FONT_FILE):
     prop.SetFontFamily(VTK_FONT_FILE)
-    prop.SetFontFile(FONT_FILE)
+    prop.SetFontFile(font_file)
 
 
 class PyVistaRenderer(Renderer):
@@ -84,7 +86,7 @@ class PyVistaRenderer(Renderer):
                  pl.add_text(BRAND_TEXT, position="lower_right", font_size=10, color=th.foreground)]
         self.status = texts[1]
         for t in texts:
-            _use_font(t.GetTextProperty())
+            _use_font(t.GetTextProperty(), MONO_FONT_FILE if t is self.status else FONT_FILE)
         for bar in pl.scalar_bars.values():
             _use_font(bar.GetTitleTextProperty())
             _use_font(bar.GetLabelTextProperty())
