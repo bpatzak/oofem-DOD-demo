@@ -27,14 +27,16 @@ CELL_TYPES = {"quad": pv.CellType.QUAD, "tri": pv.CellType.TRIANGLE}
 # VTK's built-in fonts lack Greek letters (σ, ε, γ); use a TrueType font that
 # has them. DejaVu Sans ships with matplotlib, so it is always available.
 FONT_FILE = font_manager.findfont("DejaVu Sans")
+# monospace variant for the status text, whose labels and numbers are aligned in columns
+MONO_FONT_FILE = font_manager.findfont("DejaVu Sans Mono")
 
 # Fraction of the window width usable by the model (scalar bar sits to the right)
 MODEL_VIEW_X = (0.02, 0.86)
 
 
-def _use_font(prop):
+def _use_font(prop, font_file=FONT_FILE):
     prop.SetFontFamily(VTK_FONT_FILE)
-    prop.SetFontFile(FONT_FILE)
+    prop.SetFontFile(font_file)
 
 
 class PyVistaRenderer(Renderer):
@@ -79,12 +81,13 @@ class PyVistaRenderer(Renderer):
             self.load_glyph = self.load_pts.glyph(geom=self.load_geom, scale=False, orient=False)
             pl.add_mesh(self.load_glyph, color=th.load)
 
-        texts = [pl.add_text(sc.title, position="upper_left", font_size=12, color=th.foreground),
+        # title and status: labelled lines in the same monospace font and size
+        texts = [pl.add_text(sc.title, position="upper_left", font_size=10, color=th.foreground),
                  pl.add_text("", position="lower_left", font_size=10, color=th.foreground),
                  pl.add_text(BRAND_TEXT, position="lower_right", font_size=10, color=th.foreground)]
         self.status = texts[1]
         for t in texts:
-            _use_font(t.GetTextProperty())
+            _use_font(t.GetTextProperty(), MONO_FONT_FILE if t is not texts[2] else FONT_FILE)
         for bar in pl.scalar_bars.values():
             _use_font(bar.GetTitleTextProperty())
             _use_font(bar.GetLabelTextProperty())
@@ -138,7 +141,7 @@ class PyVistaRenderer(Renderer):
     # relative to the bar length, so a fixed pixel length keeps the text size
     # fixed when the window is resized.
     SLIDER_LENGTH_PX = 520
-    SLIDER_Y_PX = 90            # bar centre: above the two-line status text and the bar title
+    SLIDER_Y_PX = 100           # bar centre: above the three-line status text and the bar title
 
     def _place_slider(self, size):
         """Put the slider in a strip above the status text, centred under the model.
