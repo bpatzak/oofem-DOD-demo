@@ -38,11 +38,13 @@ def parse_args(argv=None):
     ap.add_argument("--source", default="sine", choices=sorted(SOURCES))
     ap.add_argument("--period", type=float, default=6.0, help="period of sine/ramp source [s]")
     # --source telemetry: displacement measured on the rig (Experiment/server.py)
-    ap.add_argument("--telemetry-url", default=DEFAULT_TELEMETRY_URL,
-                    help="telemetry /api/values URL (default %(default)s)")
-    ap.add_argument("--telemetry-ip", metavar="IP",
-                    help=f"machine PC address; shortcut for "
-                         f"--telemetry-url http://IP:{TELEMETRY_PORT}/api/values")
+    # URL or IP shortcut, not both (the shortcut would silently override the URL)
+    where = ap.add_mutually_exclusive_group()
+    where.add_argument("--telemetry-url", default=DEFAULT_TELEMETRY_URL,
+                       help="telemetry /api/values URL (default %(default)s)")
+    where.add_argument("--telemetry-ip", metavar="IP",
+                       help=f"machine PC address; shortcut for "
+                            f"--telemetry-url http://IP:{TELEMETRY_PORT}/api/values")
     ap.add_argument("--telemetry-rate", type=float, default=15.0,
                     help="telemetry polling frequency [Hz] (default 15)")
     ap.add_argument("--telemetry-scale", type=float, default=1.0,
