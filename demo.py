@@ -218,7 +218,7 @@ def run(args):
             for k, v in res.inputs.items())
         fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
         return (f"{src_line}\n"
-                f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
+                f"simulation: {vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
                 f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
                 f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
 
