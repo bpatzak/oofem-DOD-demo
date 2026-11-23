@@ -209,7 +209,8 @@ def run(args):
         """Three-line status text: input source, last solved result `res`, timings.
 
         `src_line` is source.status(), e.g. the telemetry address, link state
-        and the force measured on the rig.
+        and the force measured on the rig. Each line starts with a label
+        (input:, simulation:, stat:).
         """
         # controlled displacement and the corresponding reaction per channel
         vin = "   ".join(
@@ -217,10 +218,16 @@ def run(args):
             f"{res.reactions.get(k, float('nan')):7.4f} N"
             for k, v in res.inputs.items())
         fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
-        return (f"{src_line}\n"
-                f"simulation: {vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
-                f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
-                f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
+        lines = [
+            ("input:", src_line),
+            ("simulation:", f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}"),
+            ("stat:", f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
+                      f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)"),
+        ]
+        # labels padded to a common width, so the values start in one column
+        # (both renderers draw the status text in a monospace font)
+        width = max(len(label) for label, _ in lines) + 1
+        return "\n".join(f"{label:<{width}}{text}" for label, text in lines)
 
     # what is on screen: last drawn (points, cell values, node values) and source status
     last_frame, shown_src = None, None

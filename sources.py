@@ -24,12 +24,13 @@ class Source:
         raise NotImplementedError
 
     def status(self):
-        """One line describing the source and its current state, shown on screen.
+        """One line describing the source and its current state, shown on screen
+        after the "input:" label.
 
         It may change over time (e.g. connection state or a measured value);
         the demo redraws the status text whenever it does.
         """
-        return f"input: {type(self).__name__}"
+        return type(self).__name__
 
     def close(self):
         pass
@@ -48,7 +49,7 @@ class SineSource(Source):
         return {c: v for c in self.channels}
 
     def status(self):
-        return f"input: sine 0–{self.amp:g} mm, period {self.period:g} s"
+        return f"sine 0–{self.amp:g} mm, period {self.period:g} s"
 
 
 class RampSource(Source):
@@ -64,7 +65,7 @@ class RampSource(Source):
         return {c: v for c in self.channels}
 
     def status(self):
-        return f"input: ramp 0–{self.amp:g}–0 mm, period {self.period:g} s"
+        return f"ramp 0–{self.amp:g}–0 mm, period {self.period:g} s"
 
 
 class ManualSource(Source):
@@ -82,7 +83,7 @@ class ManualSource(Source):
         return dict(self.values)
 
     def status(self):
-        return f"input: manual slider 0–{self.amp:g} mm"
+        return f"manual slider 0–{self.amp:g} mm"
 
 
 TELEMETRY_PORT = 8765
@@ -246,7 +247,7 @@ class TelemetrySource(Source):
             link = f"NO CONNECTION ({error[:40]}) for {age:.0f} s"
         else:
             link = f"connecting… {age:.0f} s"
-        text = f"input: telemetry {self.address} · {link}"
+        text = f"telemetry {self.address} · {link}"
         if n_ok:
             # last measured force; held (not current) unless the link is OK
             text += f" · measured F = {force:.2f} N" + ("" if state == self.OK else " (held)")
