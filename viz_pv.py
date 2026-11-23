@@ -138,7 +138,7 @@ class PyVistaRenderer(Renderer):
     # relative to the bar length, so a fixed pixel length keeps the text size
     # fixed when the window is resized.
     SLIDER_LENGTH_PX = 520
-    SLIDER_Y_PX = 90            # bar centre: above the two-line status text and the bar title
+    SLIDER_Y_PX = 100           # bar centre: above the three-line status text and the bar title
 
     def _place_slider(self, size):
         """Put the slider in a strip above the status text, centred under the model.
