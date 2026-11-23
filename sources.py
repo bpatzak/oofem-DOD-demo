@@ -15,6 +15,11 @@ class Source:
     def read(self):
         raise NotImplementedError
 
+    def info(self):
+        """Short extra text for the status line (e.g. a measured value or a
+        connection warning). Synthetic sources have nothing to add."""
+        return ""
+
     def close(self):
         pass
 
