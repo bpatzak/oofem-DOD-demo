@@ -17,7 +17,8 @@ import numpy as np
 
 from fields import FIELDS, color_limits
 from geometries import GEOMETRIES
-from sources import SOURCES, ManualSource
+from sources import (DEFAULT_TELEMETRY_URL, SOURCES, TELEMETRY_PORT, ManualSource,
+                     TelemetrySource)
 from viz_base import THEMES, Scene
 
 
@@ -36,6 +37,16 @@ def parse_args(argv=None):
     ap.add_argument("--theme", default="light", choices=sorted(THEMES))
     ap.add_argument("--source", default="sine", choices=sorted(SOURCES))
     ap.add_argument("--period", type=float, default=6.0, help="period of sine/ramp source [s]")
+    # --source telemetry: displacement measured on the rig (Experiment/server.py)
+    ap.add_argument("--telemetry-url", default=DEFAULT_TELEMETRY_URL,
+                    help="telemetry /api/values URL (default %(default)s)")
+    ap.add_argument("--telemetry-ip", metavar="IP",
+                    help=f"machine PC address; shortcut for "
+                         f"--telemetry-url http://IP:{TELEMETRY_PORT}/api/values")
+    ap.add_argument("--telemetry-rate", type=float, default=15.0,
+                    help="telemetry polling frequency [Hz] (default 15)")
+    ap.add_argument("--telemetry-scale", type=float, default=1.0,
+                    help="channel value = scale * measured displacement; -1 flips the sign")
     ap.add_argument("--mode", default="solve", choices=("solve", "scale"),
                     help="solve: OOFEM solve each frame; scale: superpose precomputed unit solutions")
     ap.add_argument("--skip-unchanged", type=float, default=None, metavar="TOL",
@@ -141,6 +152,13 @@ def run(args):
 
     if args.source == "manual":
         source = ManualSource(channels, amp=args.max)
+    elif args.source == "telemetry":
+        url = (f"http://{args.telemetry_ip}:{TELEMETRY_PORT}/api/values"
+               if args.telemetry_ip else args.telemetry_url)
+        print(f"telemetry: polling {url} at {args.telemetry_rate:g} Hz, "
+              f"scale {args.telemetry_scale:g}")
+        source = TelemetrySource(channels, url=url, rate=args.telemetry_rate,
+                                 scale=args.telemetry_scale)
     else:
         source = SOURCES[args.source](channels, amp=args.max, period=args.period)
 
@@ -185,6 +203,27 @@ def run(args):
         return (tol is not None and res is not None
                 and all(abs(v - res.inputs.get(k, 0.0)) <= tol for k, v in inputs.items()))
 
+    def make_status(extra):
+        """Two-line status text for the last solved result `res`.
+
+        `extra` is source.info() (e.g. the force measured on the rig); it goes
+        on the first line next to the computed reaction it can be compared with.
+        """
+        # controlled displacement and the corresponding reaction per channel
+        vin = "   ".join(
+            f"{k} = {v:6.3f} mm   F{'' if len(res.inputs) == 1 else '_' + k} = "
+            f"{res.reactions.get(k, float('nan')):7.4f} N"
+            for k, v in res.inputs.items())
+        if extra:
+            vin += f"   {extra}"
+        fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
+        return (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
+                f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
+                f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
+
+    # what is on screen: last drawn (points, cell values, node values) and source info
+    last_frame, shown_info = None, None
+
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
         inputs = source.read()
@@ -194,7 +233,14 @@ def run(args):
             # yield the CPU briefly instead of spinning
             skipped += 1
             if renderer is not None:
-                renderer.idle()
+                extra = source.info()
+                if extra != shown_info and last_frame is not None:
+                    # the input is frozen (e.g. the rig paused or disconnected) but
+                    # the source has news: refresh only the status text
+                    shown_info = extra
+                    renderer.update(*last_frame, make_status(extra))
+                else:
+                    renderer.idle()
             time.sleep(0.005)
             frame += 1
             if args.frames and frame >= args.frames:
@@ -205,16 +251,9 @@ def run(args):
         cvals, nvals = field.evaluate(res)
         t3 = time.perf_counter()
         if renderer is not None:
-            # controlled displacement and the corresponding reaction per channel
-            vin = "   ".join(
-                f"{k} = {v:6.3f} mm   F{'' if len(inputs) == 1 else '_' + k} = "
-                f"{res.reactions.get(k, float('nan')):7.4f} N"
-                for k, v in res.inputs.items())
-            fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
-            status = (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
-                      f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
-                      f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
-            renderer.update(res.coords + args.warp * res.disp, cvals, nvals, status)
+            shown_info = source.info()
+            last_frame = (res.coords + args.warp * res.disp, cvals, nvals)
+            renderer.update(*last_frame, make_status(shown_info))
         t4 = time.perf_counter()
         t_frame = t4 - t0
         ema_update("solve", model.timing["solve"] + model.timing["extract"])
@@ -230,6 +269,7 @@ def run(args):
             break
     if renderer is not None:
         renderer.close()
+    source.close()      # stops e.g. the telemetry polling thread
     print(f"frames {frame}: solved {frame - skipped}, skipped (unchanged input) {skipped}")
 
 
