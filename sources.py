@@ -2,14 +2,17 @@
 
 read() must be non-blocking and return the *latest* value, so the FE loop
 never queues behind the experiment. A real device/socket source plugs in by
-implementing the same interface.
+implementing the same interface. status() describes the source in one line,
+which is shown on screen above the results.
 """
+import collections
 import http.client
 import math
 import re
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 
@@ -20,10 +23,13 @@ class Source:
     def read(self):
         raise NotImplementedError
 
-    def info(self):
-        """Short extra text for the status line (e.g. a measured value or a
-        connection warning). Synthetic sources have nothing to add."""
-        return ""
+    def status(self):
+        """One line describing the source and its current state, shown on screen.
+
+        It may change over time (e.g. connection state or a measured value);
+        the demo redraws the status text whenever it does.
+        """
+        return f"input: {type(self).__name__}"
 
     def close(self):
         pass
@@ -41,6 +47,9 @@ class SineSource(Source):
         v = 0.5 * self.amp * (1.0 - math.cos(2.0 * math.pi * t / self.period))
         return {c: v for c in self.channels}
 
+    def status(self):
+        return f"input: sine 0–{self.amp:g} mm, period {self.period:g} s"
+
 
 class RampSource(Source):
     """Triangular ramp 0 -> amp -> 0 with given period."""
@@ -53,6 +62,9 @@ class RampSource(Source):
         ph = ((time.perf_counter() - self.t0) / self.period) % 1.0
         v = self.amp * (2.0 * ph if ph < 0.5 else 2.0 * (1.0 - ph))
         return {c: v for c in self.channels}
+
+    def status(self):
+        return f"input: ramp 0–{self.amp:g}–0 mm, period {self.period:g} s"
 
 
 class ManualSource(Source):
@@ -68,6 +80,9 @@ class ManualSource(Source):
 
     def read(self):
         return dict(self.values)
+
+    def status(self):
+        return f"input: manual slider 0–{self.amp:g} mm"
 
 
 TELEMETRY_PORT = 8765
@@ -85,11 +100,17 @@ class TelemetrySource(Source):
     sample, so read() never waits for the network and the FE loop never
     queues behind the experiment. When the data stop (204, network error),
     the last displacement is held, so the model does not jump back to zero;
-    info() then reports the problem in the status line.
+    status() then shows why and for how long.
     """
 
     # same format check as Experiment/receiver.py (parse_values)
     VALUES_RE = re.compile(r"(-?\d+\.\d{2}),(-?\d+\.\d{2})")
+
+    # link states (self._state)
+    CONNECTING = "connecting"   # no answer from the server yet
+    OK = "ok"                   # last request returned a sample
+    NO_DATA = "no_data"         # server answers 204: the machine is not sending
+    ERROR = "error"             # no connection or invalid answer
 
     def __init__(self, channels, url=DEFAULT_TELEMETRY_URL, rate=15.0, scale=1.0, timeout=1.0):
         super().__init__(channels)
@@ -97,15 +118,19 @@ class TelemetrySource(Source):
         self.rate = float(rate)        # polling frequency [Hz]
         self.scale = float(scale)      # channel value = scale * measured displacement
         self.timeout = float(timeout)  # per-request timeout [s]
+        # "host:port" for the status line
+        parts = urllib.parse.urlsplit(url)
+        self.address = f"{parts.hostname}:{parts.port or (443 if parts.scheme == 'https' else 80)}"
 
-        # latest sample, shared with the polling thread (guarded by _lock)
+        # latest sample and link state, shared with the polling thread (guarded by _lock)
         self._lock = threading.Lock()
         self._disp = 0.0          # last valid displacement [mm]; 0 before the first sample
         self._force = 0.0         # last valid force [N]
-        self._fresh = False       # True while the last request returned a sample
-        self._t_last = None       # time.monotonic() of the last valid sample
         self._n_ok = 0            # number of valid samples received
-        self._error = None        # text of the current error, None if OK
+        self._state = self.CONNECTING
+        self._since = time.monotonic()   # when the current state was entered
+        self._error = ""          # short error text for the status line (state ERROR)
+        self._t_ok = collections.deque(maxlen=64)   # times of recent samples (read rate)
 
         # no proxies: the machine PC is on the local network (like trust_env=False)
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -128,6 +153,13 @@ class TelemetrySource(Source):
     def _log(msg):
         print(f"[telemetry] {msg}", file=sys.stderr, flush=True)
 
+    def _set_state(self, state, error=""):
+        """Switch the link state (call with _lock held); keeps the start time
+        while the state does not change, for the "(N s)" shown on screen."""
+        if state != self._state:
+            self._state, self._since = state, time.monotonic()
+        self._error = error
+
     def _poll_once(self):
         """One GET request; updates the shared state. Raises on failure."""
         with self._opener.open(self.url, timeout=self.timeout) as resp:
@@ -136,15 +168,21 @@ class TelemetrySource(Source):
         if status == 204:
             # server is up, but the machine is not sending: keep the last values
             with self._lock:
-                self._fresh = False
-                self._error = "no fresh data from the machine"
+                self._set_state(self.NO_DATA)
             return
         disp, force = self.parse(body)
+        now = time.monotonic()
         with self._lock:
             self._disp, self._force = disp, force
-            self._fresh, self._error = True, None
-            self._t_last = time.monotonic()
             self._n_ok += 1
+            self._t_ok.append(now)
+            self._set_state(self.OK)
+
+    @staticmethod
+    def _short_error(exc):
+        """Compact error text, e.g. 'Connection refused' or 'timed out'."""
+        reason = getattr(exc, "reason", exc)          # URLError wraps the cause
+        return getattr(reason, "strerror", None) or str(reason) or type(exc).__name__
 
     def _run(self):
         """Polling loop of the background thread."""
@@ -156,11 +194,11 @@ class TelemetrySource(Source):
             try:
                 self._poll_once()
             except (OSError, ValueError, http.client.HTTPException) as exc:
-                # OSError covers URLError, HTTPError, timeouts, refused connections;
-                # URLError keeps the useful part (e.g. "Connection refused") in .reason
-                msg = f"{type(exc).__name__}: {getattr(exc, 'reason', exc)}"
+                # OSError covers URLError, HTTPError, timeouts, refused connections
+                short = self._short_error(exc)
                 with self._lock:
-                    self._fresh, self._error = False, msg
+                    self._set_state(self.ERROR, short)
+                msg = f"{type(exc).__name__}: {short}"
                 if msg != logged:
                     self._log(f"{msg} ({self.url}); retrying")
                     logged = msg
@@ -170,12 +208,13 @@ class TelemetrySource(Source):
                 next_tick = time.monotonic()
                 continue
 
-            # report state changes (connected / waiting for the machine) once
+            # report state changes (receiving / machine not sending) once
             with self._lock:
-                state = self._error or "receiving data"
-            if state != logged:
-                self._log(state)
-                logged = state
+                state = self._state
+            msg = "receiving data" if state == self.OK else "no fresh data from the machine"
+            if msg != logged:
+                self._log(msg)
+                logged = msg
             delay = 1.0
 
             # fixed polling rate; if a request took too long, skip missed ticks
@@ -190,16 +229,27 @@ class TelemetrySource(Source):
             v = self.scale * self._disp
         return {c: v for c in self.channels}
 
-    def info(self):
+    def status(self):
+        now = time.monotonic()
         with self._lock:
-            n_ok, fresh, force, err, t_last = (self._n_ok, self._fresh, self._force,
-                                               self._error, self._t_last)
-        if n_ok == 0:
-            return f"telemetry: {(err or 'waiting for data')[:60]}"
-        text = f"measured F = {force:.2f} N"
-        if not fresh:
-            age = time.monotonic() - t_last
-            text += f" (held {age:.0f} s: {(err or 'no data')[:50]})"
+            state, since, error, n_ok, force = (self._state, self._since, self._error,
+                                                self._n_ok, self._force)
+            recent = [t for t in self._t_ok if now - t <= 2.0]
+        age = now - since
+        if state == self.OK:
+            # samples per second over the last 2 s
+            rate = (len(recent) - 1) / (recent[-1] - recent[0]) if len(recent) > 1 else 0.0
+            link = f"receiving, {rate:.0f} reads/s"
+        elif state == self.NO_DATA:
+            link = f"NO FRESH DATA from the machine for {age:.0f} s"
+        elif state == self.ERROR:
+            link = f"NO CONNECTION ({error[:40]}) for {age:.0f} s"
+        else:
+            link = f"connecting… {age:.0f} s"
+        text = f"input: telemetry {self.address} · {link}"
+        if n_ok:
+            # last measured force; held (not current) unless the link is OK
+            text += f" · measured F = {force:.2f} N" + ("" if state == self.OK else " (held)")
         return text
 
     def close(self):

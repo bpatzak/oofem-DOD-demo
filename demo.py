@@ -205,26 +205,25 @@ def run(args):
         return (tol is not None and res is not None
                 and all(abs(v - res.inputs.get(k, 0.0)) <= tol for k, v in inputs.items()))
 
-    def make_status(extra):
-        """Two-line status text for the last solved result `res`.
+    def make_status(src_line):
+        """Three-line status text: input source, last solved result `res`, timings.
 
-        `extra` is source.info() (e.g. the force measured on the rig); it goes
-        on the first line next to the computed reaction it can be compared with.
+        `src_line` is source.status(), e.g. the telemetry address, link state
+        and the force measured on the rig.
         """
         # controlled displacement and the corresponding reaction per channel
         vin = "   ".join(
             f"{k} = {v:6.3f} mm   F{'' if len(res.inputs) == 1 else '_' + k} = "
             f"{res.reactions.get(k, float('nan')):7.4f} N"
             for k, v in res.inputs.items())
-        if extra:
-            vin += f"   {extra}"
         fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
-        return (f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
+        return (f"{src_line}\n"
+                f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}\n"
                 f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
                 f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)")
 
-    # what is on screen: last drawn (points, cell values, node values) and source info
-    last_frame, shown_info = None, None
+    # what is on screen: last drawn (points, cell values, node values) and source status
+    last_frame, shown_src = None, None
 
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
@@ -235,12 +234,12 @@ def run(args):
             # yield the CPU briefly instead of spinning
             skipped += 1
             if renderer is not None:
-                extra = source.info()
-                if extra != shown_info and last_frame is not None:
+                src_line = source.status()
+                if src_line != shown_src and last_frame is not None:
                     # the input is frozen (e.g. the rig paused or disconnected) but
-                    # the source has news: refresh only the status text
-                    shown_info = extra
-                    renderer.update(*last_frame, make_status(extra))
+                    # the source status changed: refresh only the status text
+                    shown_src = src_line
+                    renderer.update(*last_frame, make_status(src_line))
                 else:
                     renderer.idle()
             time.sleep(0.005)
@@ -253,9 +252,9 @@ def run(args):
         cvals, nvals = field.evaluate(res)
         t3 = time.perf_counter()
         if renderer is not None:
-            shown_info = source.info()
+            shown_src = source.status()
             last_frame = (res.coords + args.warp * res.disp, cvals, nvals)
-            renderer.update(*last_frame, make_status(shown_info))
+            renderer.update(*last_frame, make_status(shown_src))
         t4 = time.perf_counter()
         t_frame = t4 - t0
         ema_update("solve", model.timing["solve"] + model.timing["extract"])
