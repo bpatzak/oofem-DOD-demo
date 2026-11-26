@@ -283,7 +283,7 @@ def run(args):
 
     # what is on screen: last drawn (points, cell values, node values) and screen_state()
     last_frame, shown_state = None, None
-    calib_logged = calib.state   # last calibration state written to the console
+    calib_adjusting = False      # last logged calibration activity (console)
 
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
@@ -298,9 +298,12 @@ def run(args):
         # by more than 0.1 % from the E on screen, so the loop does not spin.
         calib.update(raw.reactions, source.measured())
         recalibrated = abs(calib.factor / shown_factor - 1.0) > 1e-3
-        if calib.state != calib_logged and calib.enabled:
-            calib_logged = calib.state
-            print(f"autocalibration: {calib.describe()}", flush=True)
+        if calib.calibrating != calib_adjusting:
+            # log only the start and the end of an adjustment, not every
+            # ok <-> paused change of each load cycle
+            calib_adjusting = calib.calibrating
+            print(f"autocalibration: {'started' if calib_adjusting else 'done'}: "
+                  f"{calib.describe()}", flush=True)
         if not resolve and not recalibrated:
             # nothing to compute or redraw: keep the window responsive and
             # yield the CPU briefly instead of spinning
