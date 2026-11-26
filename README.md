@@ -94,7 +94,7 @@ measured on the rig. For this linear, displacement-controlled model the
 reaction is proportional to `E`, so the modulus that matches the measurement is
 `E = E0 * |F_measured| / |F_simulated(E0)|`.
 - Calibration starts when the force deviation exceeds `--autocalib-tol`
-  (default 0.05 = 5 %). `E` then moves continuously towards the matching value,
+  (default 0.10 = 10 %). `E` then moves continuously towards the matching value,
   smoothed with time constant `--autocalib-tau` (default 1 s) to average out
   noise, and stops once the deviation is below 1 %.
 - No calibration without a fresh measurement or while the simulated force is

@@ -54,9 +54,9 @@ def parse_args(argv=None):
     ap.add_argument("--autocalibrate", action="store_true",
                     help="rescale Young's modulus continuously so that the simulated force "
                          "follows the force measured on the rig")
-    ap.add_argument("--autocalib-tol", type=float, default=0.05, metavar="TOL",
+    ap.add_argument("--autocalib-tol", type=float, default=0.10, metavar="TOL",
                     help="start calibrating when the force deviation exceeds TOL "
-                         "(default 0.05 = 5 %%); stops below 1 %%")
+                         "(default 0.10 = 10 %%); stops below 1 %%")
     ap.add_argument("--autocalib-tau", type=float, default=1.0, metavar="S",
                     help="smoothing time constant of the calibration [s] (default 1)")
     ap.add_argument("--autocalib-min", type=float, default=0.1, metavar="FRAC",

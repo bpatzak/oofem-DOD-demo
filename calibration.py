@@ -12,7 +12,7 @@ Result.stiffness_scaled(), no re-solve needed):
 
 * Deviation d = (|F_sim(E)| - |F_meas|) / |F_meas|, smoothed in time (time
   constant `tau`), so single noisy samples neither start nor stop anything.
-  If the smoothed |d| exceeds `tol` (default 5 %), calibration starts.
+  If the smoothed |d| exceeds `tol` (default 10 %), calibration starts.
 * While calibrating, k moves continuously towards k* = |F_meas| / |F_sim(E0)|
   by first-order smoothing with the same time constant, which averages out
   the noise of the force signal: k += (1 - exp(-dt/tau)) * (k* - k).
@@ -33,7 +33,7 @@ class AutoCalibrator:
     # states for the status line
     OFF, PAUSED, ADJUSTING, OK = "off", "paused", "adjusting", "ok"
 
-    def __init__(self, E0, tol=0.05, settle=0.01, tau=1.0, min_force=0.0, enabled=True):
+    def __init__(self, E0, tol=0.10, settle=0.01, tau=1.0, min_force=0.0, enabled=True):
         """E0: modulus the FE model was built with [MPa]; min_force [N] refers to
         the simulated reaction at E0."""
         if not 0.0 < settle < tol:
