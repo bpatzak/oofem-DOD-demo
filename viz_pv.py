@@ -237,6 +237,10 @@ class PyVistaRenderer(Renderer):
         self.pl.render()
         self.pl.iren.process_events()
 
+    def set_clim(self, clim):
+        # mapper range and the scalar bar labels of the (only) colour bar
+        self.pl.update_scalar_bar_range(list(clim))
+
     def idle(self):
         if self._layout():              # window was resized: redraw once
             self.pl.render()

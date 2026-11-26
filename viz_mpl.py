@@ -158,6 +158,9 @@ class MatplotlibRenderer(Renderer):
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
+    def set_clim(self, clim):
+        self.coll.set_clim(*clim)       # the colour bar follows its mappable
+
     def idle(self):
         if self._slider_moved:          # show the new slider position
             self._slider_moved = False

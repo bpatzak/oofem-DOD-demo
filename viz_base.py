@@ -94,6 +94,10 @@ class Renderer:
     def idle(self):
         """Keep the window responsive (events, resize) without new data."""
 
+    def set_clim(self, clim):
+        """Change the colour range (e.g. after recalibrating the stiffness);
+        takes effect with the next update()."""
+
     def is_open(self):
         raise NotImplementedError
 
