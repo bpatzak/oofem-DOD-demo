@@ -65,8 +65,10 @@ Press `q` or `Esc` in the window (or close it) to quit.
 
 `--max` is the largest expected prescribed displacement. The colour scale is
 fixed from it, using the unit solution × max (exact for the linear model), so
-the stress builds up gradually within a stable scale. Timing statistics per
-loop phase are printed every `--report` frames.
+the stress builds up gradually within a stable scale. If the displayed field
+goes beyond that range (e.g. an input above `--max`), the range is extended
+with 10 % headroom; it is not shrunk again. Timing statistics per loop phase
+are printed every `--report` frames.
 
 ### Real rig (telemetry)
 The experiment's telemetry bridge (`Experiment/server.py`) runs on the machine
@@ -104,7 +106,7 @@ reaction is proportional to `E`, so the modulus that matches the measurement is
   channel does not matter.
 - A new `E` needs no new solve: displacements and strains do not depend on
   `E`, and stresses and reactions scale with it (`Result.stiffness_scaled`).
-  The stress colour range scales with `E` as well.
+  The stress colour range scales with `E` as well (up and down).
 
 ## Structure
 | File | Role |
