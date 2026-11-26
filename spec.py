@@ -61,6 +61,22 @@ class Result:
                       {k: factor * v for k, v in self.inputs.items()},
                       {k: factor * v for k, v in self.reactions.items()})
 
+    def stiffness_scaled(self, factor):
+        """Result for Young's modulus multiplied by `factor`, same prescribed inputs.
+
+        Exact for one linear elastic material loaded only by prescribed
+        displacements (as here): the displacement and strain fields do not depend
+        on E, while stresses and reactions are proportional to it. So a change of
+        E needs no new assembly, factorization or solve.
+        """
+        if factor == 1.0:
+            return self
+        return Result(self.coords, self.cells, self.disp,
+                      factor * self.cell_stress, self.cell_strain,
+                      factor * self.node_stress, self.node_strain,
+                      dict(self.inputs),
+                      {k: factor * v for k, v in self.reactions.items()})
+
     def __add__(self, other):
         def add(a, b):
             out = dict(a)
