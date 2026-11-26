@@ -202,8 +202,12 @@ def run(args):
         if type(source).measured is Source.measured:
             print(f"autocalibration: source '{args.source}' measures no force; "
                   f"it needs --source telemetry")
-    clim0 = clim                 # colour range for E0; stress ranges scale with E
-    clim_factor = 1.0            # calibration factor the colour range was set for
+    # Colour range: anticipated from the unit solution x --max (clim0, for E0).
+    # It follows a calibrated E for stress fields and grows when the displayed
+    # field exceeds it (input above --max, stiffer specimen, ...).
+    clim0 = clim
+    clim_bound = clim[1]         # upper end of the colour range on screen
+    clim_factor = 1.0            # calibration factor the anticipated range refers to
 
     renderer = None
     if not args.no_render:
@@ -318,12 +322,6 @@ def run(args):
         # result for the current (calibrated) modulus; no new solve needed
         res = raw.stiffness_scaled(calib.factor)
         shown_factor = calib.factor
-        if (renderer is not None and field.kind == "stress"
-                and abs(calib.factor / clim_factor - 1.0) > 0.02):
-            # stresses scale with E: keep the colour range in proportion, but only
-            # update it on changes above 2 % so the colour bar does not flicker
-            clim_factor = calib.factor
-            renderer.set_clim(tuple(clim_factor * c for c in clim0))
         rescaled += not resolve
         t_solve = model.timing["solve"] if resolve else 0.0
         t_extract = model.timing["extract"] if resolve else 0.0
@@ -331,6 +329,24 @@ def run(args):
         cvals, nvals = field.evaluate(res)
         t3 = time.perf_counter()
         if renderer is not None:
+            peak = float(np.abs(nvals if smooth else cvals).max())   # largest coloured value
+            bound = clim_bound
+            if field.kind == "stress" and abs(calib.factor / clim_factor - 1.0) > 0.02:
+                # stresses scale with E: back to the anticipated range for the new E
+                # (changes below 2 % are ignored, so the colour bar does not flicker)
+                clim_factor = calib.factor
+                bound = clim0[1] * clim_factor
+            if peak > 1.02 * bound:
+                # beyond the anticipated maximum: extend the range with 10 % headroom,
+                # so it is not rescaled again for every slightly higher value. The
+                # 2 % slack covers round-off at exactly --max and the 2 % steps in
+                # which the range follows E; such values saturate only marginally.
+                print(f"colour range extended: {field.label} max {peak:.4g} {field.unit} exceeds "
+                      f"{bound:.4g}; new range up to {1.1 * peak:.4g} {field.unit}", flush=True)
+                bound = 1.1 * peak
+            if bound != clim_bound:
+                clim_bound = bound
+                renderer.set_clim((-bound, bound) if field.symmetric else (0.0, bound))
             shown_state = screen_state()
             last_frame = (res.coords + args.warp * res.disp, cvals, nvals)
             renderer.update(*last_frame, make_status(shown_state))
