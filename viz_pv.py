@@ -57,7 +57,8 @@ class PyVistaRenderer(Renderer):
         pl = pv.Plotter(window_size=(1500, 560), title=WINDOW_TITLE)
         pl.set_background(th.background)
         pl.add_mesh(grid.outline(), color=th.outline, line_width=1)
-        pl.add_mesh(grid, scalars="val", preference="point" if sc.smooth else "cell",
+        # keep the field mapper: its range is the colour range (see set_clim)
+        field_actor = pl.add_mesh(grid, scalars="val", preference="point" if sc.smooth else "cell",
                     cmap=th.cmap_signed if sc.signed else th.cmap_positive,
                     clim=sc.clim, show_edges=sc.show_mesh, edge_color=th.edges,
                     edge_opacity=sc.mesh_alpha,
@@ -67,6 +68,7 @@ class PyVistaRenderer(Renderer):
                                          vertical=True, position_x=0.90, position_y=0.15,
                                          height=0.7, width=0.04, fmt="%.3g"),
                     show_scalar_bar=True)
+        self.field_mapper = field_actor.mapper
 
         sup = sc.groups.get("supports")
         if sup is not None and len(sup):
@@ -236,6 +238,12 @@ class PyVistaRenderer(Renderer):
         # installs a repeating timer that causes extra renders per frame.
         self.pl.render()
         self.pl.iren.process_events()
+
+    def set_clim(self, clim):
+        # The colour bar shows the lookup table of this mapper. (Plotter.
+        # update_scalar_bar_range() would change the last added mapper, which
+        # is the load marker, not the field.)
+        self.field_mapper.scalar_range = tuple(clim)
 
     def idle(self):
         if self._layout():              # window was resized: redraw once

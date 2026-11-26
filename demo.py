@@ -15,9 +15,10 @@ import time
 
 import numpy as np
 
+from calibration import AutoCalibrator
 from fields import FIELDS, color_limits
 from geometries import GEOMETRIES
-from sources import (DEFAULT_TELEMETRY_URL, SOURCES, TELEMETRY_PORT, ManualSource,
+from sources import (DEFAULT_TELEMETRY_URL, SOURCES, TELEMETRY_PORT, ManualSource, Source,
                      TelemetrySource)
 from viz_base import THEMES, Scene
 
@@ -33,6 +34,9 @@ def parse_args(argv=None):
                     help="maximum prescribed displacement [mm]; fixes the colour scale "
                          "and the amplitude of the sine/ramp/manual source")
     ap.add_argument("--field", default="sxx", choices=sorted(FIELDS))
+    ap.add_argument("--grow-legend", action="store_true",
+                    help="enlarge the colour range (with 10 %% headroom) when the displayed "
+                         "field exceeds it; it never shrinks. Default: fixed range from --max")
     ap.add_argument("--backend", default="pv", choices=("pv", "mpl"))
     ap.add_argument("--theme", default="light", choices=sorted(THEMES))
     ap.add_argument("--source", default="sine", choices=sorted(SOURCES))
@@ -49,6 +53,18 @@ def parse_args(argv=None):
                     help="telemetry polling frequency [Hz] (default 15)")
     ap.add_argument("--telemetry-scale", type=float, default=1.0,
                     help="channel value = scale * measured displacement; -1 flips the sign")
+    # autocalibration of Young's modulus from the measured force (telemetry source)
+    ap.add_argument("--autocalibrate", action="store_true",
+                    help="rescale Young's modulus continuously so that the simulated force "
+                         "follows the force measured on the rig")
+    ap.add_argument("--autocalib-tol", type=float, default=0.10, metavar="TOL",
+                    help="start calibrating when the force deviation exceeds TOL "
+                         "(default 0.10 = 10 %%); stops below 1 %%")
+    ap.add_argument("--autocalib-tau", type=float, default=1.0, metavar="S",
+                    help="smoothing time constant of the calibration [s] (default 1)")
+    ap.add_argument("--autocalib-min", type=float, default=0.1, metavar="FRAC",
+                    help="calibrate only while the simulated force exceeds FRAC times the "
+                         "force at --max (default 0.1); small loads are dominated by noise")
     ap.add_argument("--mode", default="solve", choices=("solve", "scale"),
                     help="solve: OOFEM solve each frame; scale: superpose precomputed unit solutions")
     ap.add_argument("--skip-unchanged", type=float, default=None, metavar="TOL",
@@ -176,6 +192,24 @@ def run(args):
     else:
         source = SOURCES[args.source](channels, amp=args.max, period=args.period)
 
+    # Autocalibration: E0 is the modulus the model was built with; the result is
+    # rescaled by calib.factor = E / E0 (exact for this linear problem, no re-solve).
+    E0 = spec.material["E"]
+    f_at_max = sum(abs(r) for r in model.unit_results()[channels[0]].reactions.values()) * args.max
+    calib = AutoCalibrator(E0, tol=args.autocalib_tol, settle=min(0.01, 0.5 * args.autocalib_tol),
+                           tau=args.autocalib_tau, min_force=args.autocalib_min * f_at_max,
+                           enabled=args.autocalibrate)
+    if args.autocalibrate:
+        print(f"autocalibration: E0 = {E0:g} MPa, tolerance {100 * args.autocalib_tol:g} %, "
+              f"tau {args.autocalib_tau:g} s, active above F = {calib.min_force:.3g} N")
+        if type(source).measured is Source.measured:
+            print(f"autocalibration: source '{args.source}' measures no force; "
+                  f"it needs --source telemetry")
+    # Colour range: anticipated from the unit solution x --max. With
+    # --grow-legend it is enlarged when the displayed field exceeds it (input
+    # above --max, stiffer calibrated specimen, ...); it never shrinks.
+    clim_bound = clim[1]         # upper end of the colour range on screen
+
     renderer = None
     if not args.no_render:
         from viz_base import make_renderer
@@ -189,7 +223,7 @@ def run(args):
         unit = next(iter(model.unit_results().values()))
         umax = np.abs(unit.disp).max() * args.max * args.warp
         info = (f"{spec.n_nodes} nodes · {spec.n_cells} elements · {model.n_equations} DOFs · "
-                f"h = {args.h:g} mm · setup {1e3 * model.timing['setup']:.0f} ms")
+                f"h = {args.h:g} mm · E = {E0:g} MPa · setup {1e3 * model.timing['setup']:.0f} ms")
         renderer.setup(Scene(coords=unit.coords, cells=unit.cells, cell_type=spec.cell_type,
                              field_label=f"{field.label} [{field.unit}]", clim=clim,
                              signed=field.symmetric,
@@ -208,6 +242,9 @@ def run(args):
     def ema_update(key, value, alpha=0.1):
         ema[key] = value if ema[key] == 0.0 else (1 - alpha) * ema[key] + alpha * value
     res, skipped = None, 0
+    raw = None                   # last solved result for E0 (before calibration scaling)
+    rescaled = 0                 # frames redrawn for a new E only (input unchanged)
+    shown_factor = 1.0           # calibration factor of the result `res` (on screen)
     tol = args.skip_unchanged
 
     def unchanged(inputs):
@@ -219,13 +256,18 @@ def run(args):
         return (tol is not None and res is not None
                 and all(abs(v - res.inputs.get(k, 0.0)) <= tol for k, v in inputs.items()))
 
-    def make_status(src_line):
+    def screen_state():
+        """Texts that may change without a new solve: source and calibration status."""
+        return source.status(), (calib.describe() if calib.enabled else "")
+
+    def make_status(state):
         """Three-line status text: input source, last solved result `res`, timings.
 
-        `src_line` is source.status(), e.g. the telemetry address, link state
-        and the force measured on the rig. Each line starts with a label
-        (input:, simulation:, stat:).
+        `state` is screen_state(): source.status() (e.g. the telemetry address,
+        link state and the force measured on the rig) and the calibration text.
+        Each line starts with a label (input:, simulation:, stat:).
         """
+        src_line, calib_text = state
         # controlled displacement and the corresponding reaction per channel
         vin = "   ".join(
             f"{k} = {v:6.3f} mm   F{'' if len(res.inputs) == 1 else '_' + k} = "
@@ -234,29 +276,46 @@ def run(args):
         fps = 1.0 / ema["frame"] if ema["frame"] > 0 else 0.0
         return labelled([
             ("input:", src_line),
-            ("simulation:", f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}"),
+            ("simulation:", f"{vin}   {field.label} max {np.abs(cvals).max():.4g} {field.unit}"
+                            + (f"   {calib_text}" if calib_text else "")),
             ("stat:", f"solve {1e3 * ema['solve']:.1f} ms · render {1e3 * ema['draw']:.1f} ms · "
                       f"frame {1e3 * ema['frame']:.1f} ms ({fps:.0f} fps)"),
         ])
 
-    # what is on screen: last drawn (points, cell values, node values) and source status
-    last_frame, shown_src = None, None
+    # what is on screen: last drawn (points, cell values, node values) and screen_state()
+    last_frame, shown_state = None, None
+    calib_adjusting = False      # last logged calibration activity (console)
 
     while renderer is None or renderer.is_open():
         t0 = time.perf_counter()
         inputs = source.read()
         t1 = time.perf_counter()
-        if unchanged(inputs):
+        resolve = not unchanged(inputs)
+        if resolve:
+            raw = model.solve(inputs)
+        # Compare the simulated with the measured force and adapt E, on every
+        # pass (time-based smoothing), also while the input is held: the force
+        # may still change. A new E alone triggers a redraw only once it differs
+        # by more than 0.1 % from the E on screen, so the loop does not spin.
+        calib.update(raw.reactions, source.measured())
+        recalibrated = abs(calib.factor / shown_factor - 1.0) > 1e-3
+        if calib.calibrating != calib_adjusting:
+            # log only the start and the end of an adjustment, not every
+            # ok <-> paused change of each load cycle
+            calib_adjusting = calib.calibrating
+            print(f"autocalibration: {'started' if calib_adjusting else 'done'}: "
+                  f"{calib.describe()}", flush=True)
+        if not resolve and not recalibrated:
             # nothing to compute or redraw: keep the window responsive and
             # yield the CPU briefly instead of spinning
             skipped += 1
             if renderer is not None:
-                src_line = source.status()
-                if src_line != shown_src and last_frame is not None:
+                state = screen_state()
+                if state != shown_state and last_frame is not None:
                     # the input is frozen (e.g. the rig paused or disconnected) but
-                    # the source status changed: refresh only the status text
-                    shown_src = src_line
-                    renderer.update(*last_frame, make_status(src_line))
+                    # the source or calibration status changed: refresh the text
+                    shown_state = state
+                    renderer.update(*last_frame, make_status(state))
                 else:
                     renderer.idle()
             time.sleep(0.005)
@@ -264,20 +323,35 @@ def run(args):
             if args.frames and frame >= args.frames:
                 break
             continue
-        res = model.solve(inputs)
+        # result for the current (calibrated) modulus; no new solve needed
+        res = raw.stiffness_scaled(calib.factor)
+        shown_factor = calib.factor
+        rescaled += not resolve
+        t_solve = model.timing["solve"] if resolve else 0.0
+        t_extract = model.timing["extract"] if resolve else 0.0
         t2 = time.perf_counter()
         cvals, nvals = field.evaluate(res)
         t3 = time.perf_counter()
         if renderer is not None:
-            shown_src = source.status()
+            peak = float(np.abs(nvals if smooth else cvals).max())   # largest coloured value
+            # (1e-6: round-off, e.g. exactly at --max where peak == anticipated bound)
+            if args.grow_legend and peak > clim_bound * (1.0 + 1e-6):
+                # beyond the range: enlarge it with 10 % headroom, so it is not
+                # rescaled again for every slightly higher value; never shrink it
+                print(f"colour range extended: {field.label} max {peak:.4g} {field.unit} exceeds "
+                      f"{clim_bound:.4g}; new range up to {1.1 * peak:.4g} {field.unit}", flush=True)
+                clim_bound = 1.1 * peak
+                renderer.set_clim((-clim_bound, clim_bound) if field.symmetric
+                                  else (0.0, clim_bound))
+            shown_state = screen_state()
             last_frame = (res.coords + args.warp * res.disp, cvals, nvals)
-            renderer.update(*last_frame, make_status(shown_src))
+            renderer.update(*last_frame, make_status(shown_state))
         t4 = time.perf_counter()
         t_frame = t4 - t0
-        ema_update("solve", model.timing["solve"] + model.timing["extract"])
+        ema_update("solve", t_solve + t_extract)
         ema_update("draw", t4 - t3)
         ema_update("frame", t_frame)
-        stats.add(input=t1 - t0, solve=model.timing["solve"], extract=model.timing["extract"],
+        stats.add(input=t1 - t0, solve=t_solve, extract=t_extract,
                   post=t3 - t2, draw=t4 - t3, frame=t_frame)
         frame += 1
         if args.report and frame % args.report == 0:
@@ -288,7 +362,11 @@ def run(args):
     if renderer is not None:
         renderer.close()
     source.close()      # stops e.g. the telemetry polling thread
-    print(f"frames {frame}: solved {frame - skipped}, skipped (unchanged input) {skipped}")
+    print(f"frames {frame}: solved {frame - skipped - rescaled}, rescaled only (new E) {rescaled}, "
+          f"skipped (unchanged input) {skipped}")
+    if calib.enabled:
+        print(f"autocalibration: final E = {calib.E:.4g} MPa (E0 = {E0:g} MPa, "
+              f"factor {calib.factor:.4f})")
 
 
 def main(argv=None):
