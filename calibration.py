@@ -45,7 +45,7 @@ class AutoCalibrator:
         self.factor = 1.0          # k = E / E0
         self.calibrating = False   # True between exceeding tol and reaching settle
         self.deviation = None      # smoothed relative force deviation d, None if unknown
-        self.reason = ""           # why the calibration waits (status line)
+        self.reason = "no data yet"   # why the calibration waits (status line)
         self._t_last = None        # time of the last update with valid data
 
     @property
