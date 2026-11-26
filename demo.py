@@ -34,6 +34,9 @@ def parse_args(argv=None):
                     help="maximum prescribed displacement [mm]; fixes the colour scale "
                          "and the amplitude of the sine/ramp/manual source")
     ap.add_argument("--field", default="sxx", choices=sorted(FIELDS))
+    ap.add_argument("--grow-legend", action="store_true",
+                    help="enlarge the colour range (with 10 %% headroom) when the displayed "
+                         "field exceeds it; it never shrinks. Default: fixed range from --max")
     ap.add_argument("--backend", default="pv", choices=("pv", "mpl"))
     ap.add_argument("--theme", default="light", choices=sorted(THEMES))
     ap.add_argument("--source", default="sine", choices=sorted(SOURCES))
@@ -202,12 +205,10 @@ def run(args):
         if type(source).measured is Source.measured:
             print(f"autocalibration: source '{args.source}' measures no force; "
                   f"it needs --source telemetry")
-    # Colour range: anticipated from the unit solution x --max (clim0, for E0).
-    # It follows a calibrated E for stress fields and grows when the displayed
-    # field exceeds it (input above --max, stiffer specimen, ...).
-    clim0 = clim
+    # Colour range: anticipated from the unit solution x --max. With
+    # --grow-legend it is enlarged when the displayed field exceeds it (input
+    # above --max, stiffer calibrated specimen, ...); it never shrinks.
     clim_bound = clim[1]         # upper end of the colour range on screen
-    clim_factor = 1.0            # calibration factor the anticipated range refers to
 
     renderer = None
     if not args.no_render:
@@ -333,23 +334,15 @@ def run(args):
         t3 = time.perf_counter()
         if renderer is not None:
             peak = float(np.abs(nvals if smooth else cvals).max())   # largest coloured value
-            bound = clim_bound
-            if field.kind == "stress" and abs(calib.factor / clim_factor - 1.0) > 0.02:
-                # stresses scale with E: back to the anticipated range for the new E
-                # (changes below 2 % are ignored, so the colour bar does not flicker)
-                clim_factor = calib.factor
-                bound = clim0[1] * clim_factor
-            if peak > 1.02 * bound:
-                # beyond the anticipated maximum: extend the range with 10 % headroom,
-                # so it is not rescaled again for every slightly higher value. The
-                # 2 % slack covers round-off at exactly --max and the 2 % steps in
-                # which the range follows E; such values saturate only marginally.
+            # (1e-6: round-off, e.g. exactly at --max where peak == anticipated bound)
+            if args.grow_legend and peak > clim_bound * (1.0 + 1e-6):
+                # beyond the range: enlarge it with 10 % headroom, so it is not
+                # rescaled again for every slightly higher value; never shrink it
                 print(f"colour range extended: {field.label} max {peak:.4g} {field.unit} exceeds "
-                      f"{bound:.4g}; new range up to {1.1 * peak:.4g} {field.unit}", flush=True)
-                bound = 1.1 * peak
-            if bound != clim_bound:
-                clim_bound = bound
-                renderer.set_clim((-bound, bound) if field.symmetric else (0.0, bound))
+                      f"{clim_bound:.4g}; new range up to {1.1 * peak:.4g} {field.unit}", flush=True)
+                clim_bound = 1.1 * peak
+                renderer.set_clim((-clim_bound, clim_bound) if field.symmetric
+                                  else (0.0, clim_bound))
             shown_state = screen_state()
             last_frame = (res.coords + args.warp * res.disp, cvals, nvals)
             renderer.update(*last_frame, make_status(shown_state))
