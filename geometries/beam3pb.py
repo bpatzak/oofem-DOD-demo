@@ -11,11 +11,11 @@ class ThreePointBendingBeam(Geometry):
     """Rectangular beam, two bottom supports, displacement-controlled load at top centre."""
 
     default_params = {
-        "L": 200.0,      # beam length [mm]
+        "L": 220.0,      # beam length [mm]
         "H": 19.8,       # beam height [mm]
         "t": 9.84,       # thickness [mm]
-        "span": 180.0,   # distance between supports [mm]
-        "E": 8.6,        # Young's modulus [MPa]
+        "span": 200.0,   # distance between supports [mm]
+        "E": 41.50,     # Young's modulus [MPa]
         "nu": 0.15,      # Poisson's ratio
     }
     param_help = {
