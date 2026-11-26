@@ -136,6 +136,8 @@ class TelemetrySource(Source):
         self._lock = threading.Lock()
         self._disp = 0.0          # last valid displacement [mm]; 0 before the first sample
         self._force = 0.0         # last valid force [N]
+        self._read_force = None   # force of the sample last returned by read(),
+                                  # None if that sample was not fresh (see measured())
         self._n_ok = 0            # number of valid samples received
         self._state = self.CONNECTING
         self._since = time.monotonic()   # when the current state was entered
@@ -237,18 +239,21 @@ class TelemetrySource(Source):
     def read(self):
         with self._lock:
             v = self.scale * self._disp
+            # remember the force of this very sample: the FE result is computed
+            # for this displacement, so the calibration must compare with it
+            self._read_force = self._force if self._state == self.OK else None
         return {c: v for c in self.channels}
 
     def measured(self):
-        # only while samples arrive: a held force (no fresh data, no connection)
-        # must not drive the calibration. The force comes from the same sample
-        # as the displacement of read(), unless a new one arrived in between,
-        # which at the polling rate is a negligible mismatch.
+        # The force of the sample last returned by read(), not the newest one:
+        # between read() and measured() the loop solves and renders (20-60 ms),
+        # and a newer sample arriving meanwhile would pair the force with a
+        # different displacement (up to ~0.2 mm apart while loading), which
+        # biases the calibration by 10-20 % at small loads. None while no fresh
+        # samples arrive: a held force must not drive the calibration.
         with self._lock:
-            if self._state != self.OK:
-                return None
-            f = self._force
-        return {c: f for c in self.channels}
+            f = self._read_force
+        return None if f is None else {c: f for c in self.channels}
 
     def status(self):
         now = time.monotonic()
