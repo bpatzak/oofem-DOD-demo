@@ -32,6 +32,15 @@ class Source:
         """
         return type(self).__name__
 
+    def measured(self):
+        """Forces measured on the specimen, {channel: force [N]}, or None.
+
+        None means the source measures no force (synthetic inputs) or has no
+        fresh measurement right now. Used by the autocalibration, which
+        compares these forces with the simulated reactions.
+        """
+        return None
+
     def close(self):
         pass
 
@@ -229,6 +238,17 @@ class TelemetrySource(Source):
         with self._lock:
             v = self.scale * self._disp
         return {c: v for c in self.channels}
+
+    def measured(self):
+        # only while samples arrive: a held force (no fresh data, no connection)
+        # must not drive the calibration. The force comes from the same sample
+        # as the displacement of read(), unless a new one arrived in between,
+        # which at the polling rate is a negligible mismatch.
+        with self._lock:
+            if self._state != self.OK:
+                return None
+            f = self._force
+        return {c: f for c in self.channels}
 
     def status(self):
         now = time.monotonic()
